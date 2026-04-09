@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
-from lib.data import apply_modifiers, compare_reports, step_view, summarize_trace
-from lib.ui import apply_theme, divider
+from lib.data import apply_modifiers, comparison_story, compare_reports, frame_story, map_payload, step_view
+from lib.ui import apply_theme, chip_row, divider, legend, render_corridor_map, story_card
 
 apply_theme()
 st.title("Baseline vs AI")
-st.caption("Same seed, same corridor, different control policy")
+st.caption("Same corridor. Same replay seed. One side bunches; the other side stays spaced out.")
 
 seed = st.sidebar.number_input("Scenario seed", min_value=1, max_value=999, value=11, step=1)
 profile = st.sidebar.selectbox("Demand profile", ["peak", "off_peak"], index=0)
@@ -19,41 +21,52 @@ static_trace = apply_modifiers(cmp["static"]["trace"], traffic_spike, passenger_
 ppo_trace = apply_modifiers(cmp["ppo"]["trace"], traffic_spike, passenger_surge)
 
 max_step = min(len(static_trace), len(ppo_trace)) - 1
-step = st.slider("Replay step", min_value=0, max_value=max_step, value=min(40, max_step))
+step = st.slider("Replay step", min_value=0, max_value=max_step, value=min(52, max_step))
+
+static_frame = step_view(static_trace, step)
+ai_frame = step_view(ppo_trace, step)
+static_story = frame_story(static_frame, "static")
+ai_story = frame_story(ai_frame, "ppo")
 
 left, right = st.columns(2)
 with left:
-    st.subheader("Static Baseline")
-    s_frame = step_view(static_trace, step)
-    st.metric("Step Bunching", s_frame["bunching"])
-    for b in s_frame["system_state"]["buses"]:
-        st.write(f"{b['bus_id']}: headway={b['headway_forward_sec']:.1f}s, occ={b['occupancy']:.2f}")
+    st.subheader("Static Schedule")
+    render_corridor_map(map_payload(static_frame, "static"), key=f"cmp-static-{step}")
+    story_card(static_story["headline"], static_story["detail"])
 
 with right:
-    st.subheader("AI Controller (PPO)")
-    a_frame = step_view(ppo_trace, step)
-    st.metric("Step Bunching", a_frame["bunching"])
-    for b in a_frame["system_state"]["buses"]:
-        st.write(f"{b['bus_id']}: headway={b['headway_forward_sec']:.1f}s, occ={b['occupancy']:.2f}")
+    st.subheader("AI Controller")
+    render_corridor_map(map_payload(ai_frame, "ppo"), key=f"cmp-ai-{step}")
+    story_card(ai_story["headline"], ai_story["detail"])
 
-s_metrics = summarize_trace(static_trace)
-a_metrics = summarize_trace(ppo_trace)
+legend()
+divider()
+
+notes = comparison_story(static_frame, ai_frame)
+story_cols = st.columns(len(notes))
+for col, note in zip(story_cols, notes):
+    with col:
+        story_card("Judge Cue", note)
+
+chip_row(
+    [
+        f"Static bunching: {static_frame['bunching']}",
+        f"AI bunching: {ai_frame['bunching']}",
+        f"Focus stop: {ai_frame['control_state']['focus_stop_name'].replace('_', ' ')}",
+    ]
+)
 
 divider()
-st.subheader("KPI Comparison")
-rows = []
-for m in ["bunching_count", "avg_wait_time", "occupancy_std", "headway_std", "fuel_proxy"]:
-    rows.append({"metric": m, "static": round(s_metrics[m], 4), "ai": round(a_metrics[m], 4)})
-st.dataframe(rows, use_container_width=True)
-
-
-def pct(base: float, new: float) -> float:
-    if base == 0:
-        return 0.0
-    return round(100.0 * (base - new) / base, 2)
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Bunching Reduction", f"{pct(s_metrics['bunching_count'], a_metrics['bunching_count'])}%")
-k2.metric("Wait-Time Reduction", f"{pct(s_metrics['avg_wait_time'], a_metrics['avg_wait_time'])}%")
-k3.metric("Occupancy Balance", f"{pct(s_metrics['occupancy_std'], a_metrics['occupancy_std'])}%")
-k4.metric("Headway Stability", f"{pct(s_metrics['headway_std'], a_metrics['headway_std'])}%")
+if st.button("Play side-by-side replay"):
+    static_placeholder = left.empty()
+    ai_placeholder = right.empty()
+    for i in range(step, min(step + 18, max_step + 1)):
+        s_frame = step_view(static_trace, i)
+        a_frame = step_view(ppo_trace, i)
+        with static_placeholder.container():
+            st.subheader("Static Schedule")
+            render_corridor_map(map_payload(s_frame, "static"), key=f"cmp-static-play-{i}")
+        with ai_placeholder.container():
+            st.subheader("AI Controller")
+            render_corridor_map(map_payload(a_frame, "ppo"), key=f"cmp-ai-play-{i}")
+        time.sleep(0.18)

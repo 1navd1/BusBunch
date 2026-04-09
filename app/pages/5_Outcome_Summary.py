@@ -4,12 +4,12 @@ import json
 
 import streamlit as st
 
-from lib.data import ARTIFACTS_DIR, apply_modifiers, compare_reports, load_kpi_summary, summarize_trace
-from lib.ui import apply_theme, divider
+from lib.data import apply_modifiers, compare_reports, frame_story, load_kpi_summary, map_payload, step_view
+from lib.ui import apply_theme, divider, render_corridor_map, story_card
 
 apply_theme()
 st.title("Outcome Summary")
-st.caption("Judge-facing KPI outcomes and scalability narrative")
+st.caption("A final visual wrap-up for judges: what changed on the corridor and why it matters")
 
 seed = st.sidebar.number_input("Scenario seed", min_value=1, max_value=999, value=11, step=1)
 profile = st.sidebar.selectbox("Demand profile", ["peak", "off_peak"], index=0)
@@ -19,48 +19,39 @@ passenger_surge = st.sidebar.toggle("Passenger surge", value=False)
 cmp = compare_reports(int(seed), profile)
 kpi = load_kpi_summary()
 
-s_metrics = summarize_trace(apply_modifiers(cmp["static"]["trace"], traffic_spike, passenger_surge))
-h_metrics = summarize_trace(apply_modifiers(cmp["headway"]["trace"], traffic_spike, passenger_surge))
-p_metrics = summarize_trace(apply_modifiers(cmp["ppo"]["trace"], traffic_spike, passenger_surge))
+static_trace = apply_modifiers(cmp["static"]["trace"], traffic_spike, passenger_surge)
+ppo_trace = apply_modifiers(cmp["ppo"]["trace"], traffic_spike, passenger_surge)
+step = st.slider("Replay step", min_value=0, max_value=min(len(static_trace), len(ppo_trace)) - 1, value=60)
 
+static_frame = step_view(static_trace, step)
+ppo_frame = step_view(ppo_trace, step)
 
-def better(a: float, b: float) -> bool:
-    return b < a
+left, right = st.columns(2)
+with left:
+    st.subheader("Before: Static Schedule")
+    render_corridor_map(map_payload(static_frame, "static"), key=f"summary-static-{step}")
+    story = frame_story(static_frame, "static")
+    story_card(story["headline"], story["detail"])
 
-wins = sum(
-    [
-        better(s_metrics["bunching_count"], p_metrics["bunching_count"]),
-        better(s_metrics["avg_wait_time"], p_metrics["avg_wait_time"]),
-        better(s_metrics["occupancy_std"], p_metrics["occupancy_std"]),
-    ]
-)
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("KPI Wins", f"{wins}/3")
-c2.metric("Bunching", f"{s_metrics['bunching_count']:.0f} -> {p_metrics['bunching_count']:.0f}")
-c3.metric("Wait Time", f"{s_metrics['avg_wait_time']:.1f}s -> {p_metrics['avg_wait_time']:.1f}s")
-c4.metric("Occupancy Std", f"{s_metrics['occupancy_std']:.3f} -> {p_metrics['occupancy_std']:.3f}")
+with right:
+    st.subheader("After: AI Control")
+    render_corridor_map(map_payload(ppo_frame, "ppo"), key=f"summary-ai-{step}")
+    story = frame_story(ppo_frame, "ppo")
+    story_card(story["headline"], story["detail"])
 
 divider()
-st.dataframe(
-    [
-        {"policy": "static", **{k: round(v, 3) for k, v in s_metrics.items() if k != "total_delay"}},
-        {"policy": "headway", **{k: round(v, 3) for k, v in h_metrics.items() if k != "total_delay"}},
-        {"policy": "ppo", **{k: round(v, 3) for k, v in p_metrics.items() if k != "total_delay"}},
-    ],
-    use_container_width=True,
+st.subheader("Judge Takeaways")
+takeaways = st.columns(3)
+takeaways[0].markdown(
+    "**Spacing becomes readable**  \nInstead of buses stacking up in one location, they spread back out along the route."
+)
+takeaways[1].markdown(
+    "**Stops feel less chaotic**  \nPassenger buildup is easier to manage when the corridor does not send two buses together."
+)
+takeaways[2].markdown(
+    "**This scales corridor-by-corridor**  \nThe same predictor-policy loop can be reused across BMTC corridors."
 )
 
-st.subheader("Scale Story: Corridor -> City")
-st.markdown("- Corridor MVP validates interventions with deterministic replay")
-st.markdown("- Each corridor can reuse the same Predictor/Policy interfaces")
-st.markdown("- City control room can aggregate corridor risk/action streams")
-
-st.subheader("Download Demo Assets")
-for filename in ["kpi_summary.json", "demo_seed.json", "comparison_full.json", "pitch_script.md", "backup_assets.json"]:
-    path = ARTIFACTS_DIR / filename
-    if path.exists():
-        st.download_button(label=f"Download {filename}", data=path.read_bytes(), file_name=filename)
-
-with st.expander("Raw KPI Summary"):
+divider()
+with st.expander("Technical Summary"):
     st.code(json.dumps(kpi, indent=2), language="json")

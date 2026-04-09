@@ -9,6 +9,13 @@ class BusState:
     bus_id: str
     stop_index: int
     position_progress: float
+    cycle_position_sec: float
+    lat: float
+    lon: float
+    current_stop_id: str
+    current_stop_name: str
+    next_stop_id: str
+    next_stop_name: str
     occupancy: float
     delay_sec: float
     headway_forward_sec: float
@@ -19,7 +26,12 @@ class BusState:
 @dataclass
 class StopState:
     stop_id: str
+    stop_name: str
+    lat: float
+    lon: float
+    order: int
     queue_len: int
+    is_terminal: bool = False
 
 
 @dataclass
@@ -27,6 +39,10 @@ class SegmentState:
     segment_id: str
     from_stop_id: str
     to_stop_id: str
+    from_lat: float
+    from_lon: float
+    to_lat: float
+    to_lon: float
     base_travel_time_sec: float
     traffic_multiplier: float
 
@@ -43,6 +59,9 @@ class SystemState:
 
 @dataclass
 class ControlState:
+    focus_bus_id: str
+    focus_stop_id: str
+    focus_stop_name: str
     current_bus_delay_sec: float
     forward_headway_sec: float
     backward_headway_sec: float

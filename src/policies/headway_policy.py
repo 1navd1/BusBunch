@@ -38,6 +38,9 @@ class HeadwayPolicy:
 
     def action_vector(self, observation: list[float]) -> list[float]:
         control_state = ControlState(
+            focus_bus_id="bus_focus",
+            focus_stop_id="S1",
+            focus_stop_name="Focus Stop",
             current_bus_delay_sec=observation[0] * 600.0,
             forward_headway_sec=observation[1] * 600.0,
             backward_headway_sec=observation[2] * 600.0,

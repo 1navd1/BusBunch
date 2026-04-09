@@ -70,6 +70,9 @@ class ControlEnv:
         bus = system_state.buses[i]
         demand_est = prediction_bundle.stop_demand_forecast[i % len(prediction_bundle.stop_demand_forecast)]
         return ControlState(
+            focus_bus_id=bus.bus_id,
+            focus_stop_id=bus.current_stop_id,
+            focus_stop_name=bus.current_stop_name,
             current_bus_delay_sec=bus.delay_sec,
             forward_headway_sec=bus.headway_forward_sec,
             backward_headway_sec=bus.headway_backward_sec,

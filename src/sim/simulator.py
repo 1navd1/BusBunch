@@ -50,6 +50,7 @@ class Simulator:
         self.occupancies: List[int] = []
         self.stop_queues: List[int] = []
         self.delay_proxy: List[float] = []
+        self.route_anchor_sec: float = 0.0
 
     @staticmethod
     def _load_stops(path: str) -> List[Stop]:
@@ -105,31 +106,100 @@ class Simulator:
 
         self.stop_queues = [self.rng.randint(8, 20) for _ in self.route_graph.stops]
         self.delay_proxy = [0.0 for _ in range(self.n_buses)]
+        self.route_anchor_sec = 0.0
 
     def _focused_bus_idx(self) -> int:
         return min(range(self.n_buses), key=lambda i: self.headways[i])
 
+    def _cycle_time(self, traffic_mult: float) -> float:
+        cycle_time = sum(float(s.base_travel_time_sec) for s in self.route_graph.segments) * traffic_mult
+        return max(780.0, cycle_time)
+
+    def _segment_times(self, traffic_mult: float) -> List[float]:
+        return [float(s.base_travel_time_sec) * traffic_mult for s in self.route_graph.segments]
+
+    def _route_positions(self, traffic_mult: float) -> List[float]:
+        cycle_time = self._cycle_time(traffic_mult)
+        positions = [self.route_anchor_sec % cycle_time]
+        for i in range(1, self.n_buses):
+            positions.append((positions[i - 1] - self.headways[i - 1]) % cycle_time)
+        return positions
+
+    def _position_to_geo(self, cycle_position_sec: float, traffic_mult: float) -> Dict[str, float | int | str]:
+        segment_times = self._segment_times(traffic_mult)
+        route_progress = cycle_position_sec % sum(segment_times)
+        elapsed = 0.0
+
+        for idx, seg_time in enumerate(segment_times):
+            nxt = elapsed + seg_time
+            if route_progress <= nxt or idx == len(segment_times) - 1:
+                progress = _clip((route_progress - elapsed) / max(seg_time, 1e-6), 0.0, 1.0)
+                current_stop = self.route_graph.stops[idx]
+                next_stop = self.route_graph.stops[(idx + 1) % len(self.route_graph.stops)]
+                lat = current_stop.lat + (next_stop.lat - current_stop.lat) * progress
+                lon = current_stop.lon + (next_stop.lon - current_stop.lon) * progress
+                return {
+                    "stop_index": idx,
+                    "position_progress": float(progress),
+                    "lat": float(lat),
+                    "lon": float(lon),
+                    "current_stop_id": current_stop.stop_id,
+                    "current_stop_name": current_stop.stop_name,
+                    "next_stop_id": next_stop.stop_id,
+                    "next_stop_name": next_stop.stop_name,
+                }
+            elapsed = nxt
+
+        last_stop = self.route_graph.stops[-1]
+        return {
+            "stop_index": len(self.route_graph.stops) - 1,
+            "position_progress": 1.0,
+            "lat": float(last_stop.lat),
+            "lon": float(last_stop.lon),
+            "current_stop_id": last_stop.stop_id,
+            "current_stop_name": last_stop.stop_name,
+            "next_stop_id": self.route_graph.stops[0].stop_id,
+            "next_stop_name": self.route_graph.stops[0].stop_name,
+        }
+
     def _build_system_state(self, time_sin: float, demand_level: float, traffic_mult: float) -> SystemState:
         mean_h = sum(self.headways) / len(self.headways)
+        positions = self._route_positions(traffic_mult)
 
         buses: List[BusState] = []
         for i in range(self.n_buses):
             occ_ratio = _clip(self.occupancies[i] / float(self.capacity), 0.0, 1.0)
+            geo = self._position_to_geo(positions[i], traffic_mult)
             buses.append(
                 BusState(
                     bus_id=f"bus_{i+1}",
-                    stop_index=i % len(self.route_graph.stops),
-                    position_progress=float((self.step_idx % 10) / 10.0),
+                    stop_index=int(geo["stop_index"]),
+                    position_progress=float(geo["position_progress"]),
+                    cycle_position_sec=float(positions[i]),
+                    lat=float(geo["lat"]),
+                    lon=float(geo["lon"]),
+                    current_stop_id=str(geo["current_stop_id"]),
+                    current_stop_name=str(geo["current_stop_name"]),
+                    next_stop_id=str(geo["next_stop_id"]),
+                    next_stop_name=str(geo["next_stop_name"]),
                     occupancy=occ_ratio,
                     delay_sec=max(0.0, self.headways[i] - mean_h),
                     headway_forward_sec=float(self.headways[i]),
                     headway_backward_sec=float(self.headways[(i - 1) % self.n_buses]),
-                    status="terminal" if i == 0 and self.step_idx % 15 == 0 else "in_service",
+                    status="terminal" if i == 0 and int(geo["stop_index"]) == 0 and self.step_idx % 15 == 0 else "in_service",
                 )
             )
 
         stops = [
-            StopState(stop_id=self.route_graph.stops[i].stop_id, queue_len=int(self.stop_queues[i]))
+            StopState(
+                stop_id=self.route_graph.stops[i].stop_id,
+                stop_name=self.route_graph.stops[i].stop_name,
+                lat=float(self.route_graph.stops[i].lat),
+                lon=float(self.route_graph.stops[i].lon),
+                order=int(self.route_graph.stops[i].order),
+                queue_len=int(self.stop_queues[i]),
+                is_terminal=(i == 0),
+            )
             for i in range(len(self.route_graph.stops))
         ]
 
@@ -138,10 +208,14 @@ class Simulator:
                 segment_id=s.segment_id,
                 from_stop_id=s.from_stop_id,
                 to_stop_id=s.to_stop_id,
+                from_lat=float(self.route_graph.stops[i].lat),
+                from_lon=float(self.route_graph.stops[i].lon),
+                to_lat=float(self.route_graph.stops[(i + 1) % len(self.route_graph.stops)].lat),
+                to_lon=float(self.route_graph.stops[(i + 1) % len(self.route_graph.stops)].lon),
                 base_travel_time_sec=s.base_travel_time_sec,
                 traffic_multiplier=float(traffic_mult),
             )
-            for s in self.route_graph.segments
+            for i, s in enumerate(self.route_graph.segments)
         ]
 
         return SystemState(
@@ -222,10 +296,10 @@ class Simulator:
         controlled[focused] -= 35.0 * max(0.0, speed_delta)
 
         self.headways = [_clip(x, 55.0, 560.0) for x in controlled]
-        cycle_time = sum(float(s.base_travel_time_sec) for s in self.route_graph.segments) * traffic_mult
-        cycle_time = max(780.0, cycle_time)
+        cycle_time = self._cycle_time(traffic_mult)
         scale = cycle_time / sum(self.headways)
         self.headways = [h * scale for h in self.headways]
+        self.route_anchor_sec = (self.route_anchor_sec + self.tick_sec * (1.0 + max(0.0, speed_delta * 0.25))) % cycle_time
 
         # Occupancy drift for all buses.
         mean_headway = max(1e-6, sum(self.headways) / self.n_buses)
@@ -289,12 +363,20 @@ class Simulator:
         return self.metrics.to_episode_metrics()
 
     def snapshot_json(self, system_state: SystemState, action: ControlAction, reward: float, bunching: int, prediction_bundle: Dict | None = None, control_state: Dict | None = None) -> Dict:
+        visual_event = "stable_flow"
+        action_values = asdict(action)
+        if control_state and control_state.get("focus_bus_id"):
+            visual_event = "ai_intervention" if any(abs(float(action_value)) > 1e-6 for action_value in action_values.values()) else "monitoring"
+        if bunching > 0:
+            visual_event = "bunching_alert"
+
         frame = {
             "step": self.step_idx,
             "system_state": asdict(system_state),
-            "action": asdict(action),
+            "action": action_values,
             "bunching": int(bunching),
             "reward": round(float(reward), 4),
+            "visual_event": visual_event,
         }
         if prediction_bundle is not None:
             frame["prediction_bundle"] = prediction_bundle
