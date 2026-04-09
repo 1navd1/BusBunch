@@ -536,6 +536,7 @@ def driver_assist(frame: Dict[str, Any]) -> Dict[str, str]:
         "bus_id": bus["bus_id"].upper(),
         "current_stop": current_stop,
         "next_stop": next_stop,
+        "focus_bus_id": bus["bus_id"],
         "headway_ahead": headway_ahead,
         "headway_behind": headway_behind,
         "risk_level": risk,
@@ -545,4 +546,109 @@ def driver_assist(frame: Dict[str, Any]) -> Dict[str, str]:
         "reason": "; ".join(reasons).capitalize() + ".",
         "expected_benefit": expected,
         "spoken_message": spoken,
+    }
+
+
+def reevaluate_after_driver_response(frame: Dict[str, Any], response: str) -> Dict[str, str | List[str]]:
+    assist = driver_assist(frame)
+    ctrl = frame["control_state"]
+    pred = frame["prediction_bundle"]
+    response = response.lower().strip()
+
+    current_stop = assist["current_stop"]
+    next_stop = assist["next_stop"]
+    focus_bus = assist["bus_id"]
+    risk_score = float(pred["bunching_risk_score"])
+    congestion = float(pred["congestion_score"])
+
+    route_status = "Stay on the same corridor. No route diversion is required."
+    revised_risk = assist["risk_level"]
+    response_label = response.replace("_", " ").title()
+
+    if response == "acknowledged":
+        revised_instruction = assist["instruction"]
+        revised_reason = "Driver confirmed the instruction, so the controller keeps the original plan active."
+        timing_adjustment = (
+            f"Monitor spacing through {next_stop}. If the gap recovers, no extra dispatch correction is needed."
+        )
+        control_room_action = (
+            f"Track {focus_bus} through the next two stops and release the terminal schedule only if spacing stays stable."
+        )
+        expected_outcome = "Headway should recover gradually without shifting work to other buses."
+        status_tone = "green" if revised_risk == "Low" else "yellow"
+        action_chips = ["Driver acknowledged", "Original plan stays active", f"Monitor through {next_stop}"]
+    elif response == "cannot_comply":
+        revised_instruction = f"Maintain service through {next_stop}; no manual hold is required from {focus_bus}."
+        revised_reason = (
+            "The driver cannot perform the requested action, so the AI pushes correction downstream to dispatch timing and the following bus."
+        )
+        timing_adjustment = (
+            f"Delay the next terminal dispatch by 45 sec and ask the trailing bus to ease speed slightly for one segment."
+        )
+        control_room_action = (
+            f"Control room should absorb the correction centrally and rebalance the corridor around {current_stop} and {next_stop}."
+        )
+        expected_outcome = "Bunching risk remains controlled, but recovery will be slower than the original plan."
+        revised_risk = "Moderate" if risk_score < 0.75 else "High"
+        status_tone = "yellow" if revised_risk == "Moderate" else "red"
+        action_chips = ["Driver cannot comply", "Dispatch +45 sec", "Trailing bus slows slightly"]
+    elif response == "traffic_blocked":
+        revised_instruction = f"Hold position safely at {current_stop} until traffic clears; do not force the segment to {next_stop}."
+        revised_reason = (
+            "The segment ahead is blocked, so the AI switches from spacing recovery to congestion containment."
+        )
+        timing_adjustment = (
+            f"Mark the {current_stop} -> {next_stop} segment as delayed, delay the following bus by 60 sec, and warn terminal dispatch."
+        )
+        control_room_action = (
+            f"Push a corridor-wide timing revision around the blocked segment and prevent more buses from entering the queue."
+        )
+        expected_outcome = "The corridor avoids stacking more buses into the blocked segment while preserving safer recovery afterward."
+        revised_risk = "High" if congestion >= 0.45 else "Moderate"
+        status_tone = "red" if revised_risk == "High" else "yellow"
+        route_status = f"Segment restriction active on {current_stop} -> {next_stop}. Corridor remains the same, but timing is being re-sequenced around the blockage."
+        action_chips = ["Traffic blocked", "Segment delay +60 sec", "Gate following buses"]
+    elif response == "stop_overcrowded":
+        revised_instruction = f"Serve full boarding at {next_stop}; skip any extra holding and clear the stop safely."
+        revised_reason = (
+            "Passenger buildup is the main constraint, so the AI removes hold pressure from this bus and shifts recovery to supporting vehicles."
+        )
+        timing_adjustment = (
+            f"Allow extended dwell at {next_stop}, dispatch the next bus 30 sec earlier if available, and tighten spacing behind this bus."
+        )
+        control_room_action = (
+            f"Treat {next_stop} as a crowd hot spot and send supporting capacity behind {focus_bus}."
+        )
+        expected_outcome = "Passenger queues fall faster, and the following bus helps absorb crowding while headway is repaired later."
+        revised_risk = "Moderate" if assist["crowd_level"] == "Heavy" else assist["risk_level"]
+        status_tone = "yellow" if revised_risk != "Low" else "green"
+        route_status = f"Crowd-management priority at {next_stop}. The corridor stays unchanged, but timing favors passenger clearance over holding."
+        action_chips = ["Stop overcrowded", "Extended dwell allowed", "Support bus closes gap"]
+    else:
+        revised_instruction = assist["instruction"]
+        revised_reason = "No special driver response was provided."
+        timing_adjustment = "No timing changes applied."
+        control_room_action = "No extra control-room action is required."
+        expected_outcome = assist["expected_benefit"]
+        status_tone = "green"
+        action_chips = ["Normal operation"]
+
+    voice_prompt = (
+        f"{focus_bus}: updated plan. {revised_instruction}. "
+        f"Reason: {revised_reason} "
+        f"Control room update: {timing_adjustment}"
+    )
+
+    return {
+        "response_label": response_label,
+        "revised_risk": revised_risk,
+        "status_tone": status_tone,
+        "revised_instruction": revised_instruction,
+        "revised_reason": revised_reason,
+        "timing_adjustment": timing_adjustment,
+        "route_status": route_status,
+        "control_room_action": control_room_action,
+        "expected_outcome": expected_outcome,
+        "voice_prompt": voice_prompt,
+        "action_chips": action_chips,
     }
