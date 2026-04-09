@@ -1,0 +1,48 @@
+{
+  "training": {
+    "episodes_seen": 30,
+    "last_episode_reward": -206.6477,
+    "best_episode_reward": -204.071
+  },
+  "results": {
+    "static": {
+      "mean_reward": -1415.4307,
+      "bunching_count": 178.2,
+      "headway_std": 208.0951,
+      "avg_wait_time": 222.8333,
+      "occupancy_std": 0.4124,
+      "fuel_proxy": 200.207,
+      "total_delay": 0.0
+    },
+    "headway": {
+      "mean_reward": -599.8806,
+      "bunching_count": 29.8,
+      "headway_std": 95.2884,
+      "avg_wait_time": 183.3509,
+      "occupancy_std": 0.301,
+      "fuel_proxy": 211.3075,
+      "total_delay": 1455.5085
+    },
+    "ppo": {
+      "mean_reward": -208.7243,
+      "bunching_count": 0,
+      "headway_std": 9.3529,
+      "avg_wait_time": 153.2735,
+      "occupancy_std": 0.0491,
+      "fuel_proxy": 233.5982,
+      "total_delay": 5021.0749
+    }
+  },
+  "improvement_vs_static": {
+    "bunching_count_pct": 100.0,
+    "avg_wait_time_pct": 31.22,
+    "occupancy_std_pct": 88.09,
+    "headway_std_pct": 95.51
+  },
+  "headline_kpi_win": {
+    "bunching_reduction": true,
+    "wait_time_reduction": true,
+    "occupancy_balance": true,
+    "wins_out_of_3": 3
+  }
+}
