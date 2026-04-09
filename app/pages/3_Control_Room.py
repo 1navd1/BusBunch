@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import streamlit as st
 
-from lib.data import action_chips, apply_modifiers, explain_action, frame_story, map_payload, run_policy_report, step_view
+from lib.data import (
+    action_chips,
+    apply_modifiers,
+    driver_assist,
+    explain_action,
+    frame_story,
+    map_payload,
+    run_policy_report,
+    step_view,
+)
 from lib.ui import apply_theme, chip_row, divider, legend, render_corridor_map, story_card
 
 apply_theme()
@@ -19,6 +28,7 @@ trace = apply_modifiers(report["trace"], traffic_spike, passenger_surge)
 step = st.slider("Replay step", min_value=0, max_value=len(trace) - 1, value=min(80, len(trace) - 1))
 frame = step_view(trace, step)
 story = frame_story(frame, "ppo")
+assist = driver_assist(frame)
 
 map_col, side = st.columns([1.65, 1.0])
 with map_col:
@@ -30,7 +40,26 @@ with side:
     st.markdown("")
     story_card("Latest Intervention", explain_action(frame))
     st.markdown("")
+    story_card("Driver Instruction", assist["instruction"])
+    st.markdown("")
     chip_row(action_chips(frame))
+
+divider()
+
+st.subheader("Driver Assist")
+assist_cols = st.columns(4)
+assist_cols[0].markdown(f"**Bus**  \n`{assist['bus_id']}`")
+assist_cols[1].markdown(f"**Gap Ahead**  \n`{assist['headway_ahead']}`")
+assist_cols[2].markdown(f"**Gap Behind**  \n`{assist['headway_behind']}`")
+assist_cols[3].markdown(f"**Risk**  \n`{assist['risk_level']}`")
+
+driver_cols = st.columns(2)
+driver_cols[0].markdown(
+    f"**Reason**  \n{assist['reason']}  \n\n**Expected Crowd At Next Stop**  \n`{assist['crowd_level']}`"
+)
+driver_cols[1].markdown(
+    f"**Driver Message**  \n{assist['spoken_message']}  \n\n**Expected Benefit**  \n{assist['expected_benefit']}"
+)
 
 divider()
 

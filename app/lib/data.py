@@ -446,3 +446,103 @@ def action_chips(frame: Dict[str, Any]) -> List[str]:
     if not chips:
         chips.append("No intervention")
     return chips
+
+
+def _seconds_text(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    minutes, secs = divmod(seconds, 60)
+    if minutes and secs:
+        return f"{minutes} min {secs} sec"
+    if minutes:
+        return f"{minutes} min"
+    return f"{secs} sec"
+
+
+def _risk_level(score: float) -> str:
+    if score >= 0.7:
+        return "High"
+    if score >= 0.4:
+        return "Moderate"
+    return "Low"
+
+
+def _crowd_level(occupancy_ratio: float, demand_estimate: float) -> str:
+    combined = 0.65 * occupancy_ratio + 0.35 * min(1.0, demand_estimate / 12.0)
+    if combined >= 0.78:
+        return "Heavy"
+    if combined >= 0.48:
+        return "Moderate"
+    return "Light"
+
+
+def focus_bus(frame: Dict[str, Any]) -> Dict[str, Any]:
+    focus_bus_id = frame.get("control_state", {}).get("focus_bus_id")
+    buses = frame["system_state"]["buses"]
+    if focus_bus_id:
+        for bus in buses:
+            if bus["bus_id"] == focus_bus_id:
+                return bus
+    return primary_bunching_bus(frame)
+
+
+def driver_assist(frame: Dict[str, Any]) -> Dict[str, str]:
+    ctrl = frame["control_state"]
+    pred = frame["prediction_bundle"]
+    action = frame["action"]
+    bus = focus_bus(frame)
+
+    risk = _risk_level(float(pred["bunching_risk_score"]))
+    crowd = _crowd_level(float(bus["occupancy"]), float(ctrl["stop_demand_estimate"]))
+    current_stop = bus["current_stop_name"].replace("_", " ")
+    next_stop = bus["next_stop_name"].replace("_", " ")
+    headway_ahead = _seconds_text(float(bus["headway_forward_sec"]))
+    headway_behind = _seconds_text(float(bus["headway_backward_sec"]))
+
+    if action["hold_sec"] > 0:
+        instruction = f"Hold for {_seconds_text(action['hold_sec'])} at {next_stop}"
+        expected = f"This should reopen the gap ahead before reaching {next_stop}."
+    elif action["dispatch_offset_sec"] > 0:
+        instruction = f"Leave terminal after {_seconds_text(action['dispatch_offset_sec'])}"
+        expected = "This should smooth the next dispatch wave and reduce a new bunch forming."
+    elif action["speed_delta_pct"] < -0.01:
+        instruction = f"Reduce speed slightly for the next segment ({abs(action['speed_delta_pct']) * 100:.0f}% slower)"
+        expected = f"This should stop the bus from catching the vehicle ahead before {next_stop}."
+    elif action["speed_delta_pct"] > 0.01:
+        instruction = f"Move slightly faster for the next segment ({action['speed_delta_pct'] * 100:.0f}% faster)"
+        expected = f"This should recover spacing before reaching {next_stop}."
+    else:
+        instruction = "Maintain current speed and normal dwell"
+        expected = "Spacing is acceptable; no intervention is needed right now."
+
+    reasons = []
+    if float(pred["bunching_risk_score"]) >= 0.55:
+        reasons.append("bus spacing is getting tight")
+    if float(pred["congestion_score"]) >= 0.6:
+        reasons.append("traffic ahead is slowing the corridor")
+    if crowd == "Heavy":
+        reasons.append(f"{next_stop} is expected to be crowded")
+    if float(bus["headway_backward_sec"]) < 180:
+        reasons.append("the bus behind is too close")
+    if not reasons:
+        reasons.append("service spacing is currently stable")
+
+    spoken = (
+        f"{bus['bus_id'].upper()}: {instruction}. "
+        f"Bus ahead gap is {headway_ahead}. Bus behind gap is {headway_behind}. "
+        f"Risk is {risk.lower()}."
+    )
+
+    return {
+        "bus_id": bus["bus_id"].upper(),
+        "current_stop": current_stop,
+        "next_stop": next_stop,
+        "headway_ahead": headway_ahead,
+        "headway_behind": headway_behind,
+        "risk_level": risk,
+        "crowd_level": crowd,
+        "occupancy_pct": f"{float(bus['occupancy']) * 100:.0f}%",
+        "instruction": instruction,
+        "reason": "; ".join(reasons).capitalize() + ".",
+        "expected_benefit": expected,
+        "spoken_message": spoken,
+    }

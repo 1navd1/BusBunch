@@ -132,6 +132,92 @@ p, li, .stCaption {
   display: inline-block;
 }
 
+.tablet-shell {
+  border: 1px solid rgba(16,34,26,0.14);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(12,24,20,0.96), rgba(18,34,29,0.96));
+  padding: 1rem;
+  box-shadow: 0 18px 44px rgba(16,34,26,0.20);
+}
+
+.tablet-shell h4,
+.tablet-shell p,
+.tablet-shell span,
+.tablet-shell strong {
+  color: #f1f6f3 !important;
+}
+
+.tablet-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.1rem;
+  margin: 0 0 0.2rem;
+}
+
+.tablet-subtitle {
+  color: rgba(241,246,243,0.72) !important;
+  font-size: 0.93rem;
+  margin: 0;
+}
+
+.status-card {
+  border-radius: 22px;
+  padding: 1rem 1rem 0.9rem;
+  min-height: 134px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+.status-card h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-card strong {
+  display: block;
+  font-size: 2rem;
+  line-height: 1.05;
+  margin-bottom: 0.25rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.status-card p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.status-green {
+  background: linear-gradient(180deg, rgba(5,150,105,0.96), rgba(6,95,70,0.96));
+}
+
+.status-yellow {
+  background: linear-gradient(180deg, rgba(245,158,11,0.98), rgba(180,83,9,0.98));
+}
+
+.status-red {
+  background: linear-gradient(180deg, rgba(239,68,68,0.98), rgba(185,28,28,0.98));
+}
+
+.driver-panel {
+  border-radius: 22px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 1rem;
+}
+
+.driver-panel h5 {
+  margin: 0 0 0.35rem;
+  color: #f1f6f3;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.driver-panel p {
+  margin: 0;
+  color: rgba(241,246,243,0.88);
+}
+
 @media (max-width: 768px) {
   [data-testid="stMetric"] { padding: 0.25rem 0.4rem; }
 }
@@ -170,6 +256,48 @@ def legend() -> None:
   <span class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Crowded bus</span>
   <span class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Bunching risk</span>
   <span class="legend-item"><span class="legend-dot" style="background:#fbbf24"></span>Terminal / key stop</span>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def tablet_shell(title: str, subtitle: str) -> None:
+    st.markdown(
+        f"""
+<div class="tablet-shell">
+  <div class="tablet-title">{title}</div>
+  <p class="tablet-subtitle">{subtitle}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def status_card(title: str, value: str, detail: str, tone: str) -> None:
+    tone_class = {
+        "green": "status-green",
+        "yellow": "status-yellow",
+        "red": "status-red",
+    }.get(tone, "status-green")
+    st.markdown(
+        f"""
+<div class="status-card {tone_class}">
+  <h5>{title}</h5>
+  <strong>{value}</strong>
+  <p>{detail}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def driver_panel(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+<div class="driver-panel">
+  <h5>{title}</h5>
+  <p>{body}</p>
 </div>
         """,
         unsafe_allow_html=True,

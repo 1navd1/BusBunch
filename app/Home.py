@@ -43,6 +43,7 @@ with left:
     st.markdown("- `Baseline vs AI`: same route, same seed, but one side bunches while the other stays evenly spaced")
     st.markdown("- `Control Room`: see the intervention being triggered on the map")
     st.markdown("- `AI Brain`: understand why the controller acted at that stop")
+    st.markdown("- `Driver Assist`: see the plain-language instruction a driver would actually follow")
 
 with right:
     st.subheader("Headline Story")

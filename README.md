@@ -24,6 +24,7 @@ The demo is designed for judges:
 - `Baseline vs AI`: side-by-side geographic replay
 - `Control Room`: focus bus, intervention, and route situation
 - `AI Brain`: what the predictor sees and how the controller acts
+- `Driver Assist`: plain-language guidance for the driver
 - `Outcome Summary`: final judge wrap-up
 
 ## How To Run
