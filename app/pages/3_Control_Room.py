@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.lib.data import apply_modifiers, explain_action, run_policy_report, step_view, trace_series
+from lib.data import apply_modifiers, explain_action, run_policy_report, step_view, trace_series
+from lib.ui import apply_theme, divider
 
+apply_theme()
 st.title("Control Room")
 st.caption("Operational view: alerts, action log, and per-bus monitoring")
 
@@ -44,13 +46,15 @@ for b in frame["system_state"]["buses"]:
     c2.metric(f"{b['bus_id']} Occupancy", f"{100*b['occupancy']:.1f}%")
     c3.metric(f"{b['bus_id']} Delay", f"{b['delay_sec']:.1f}s")
 
+divider()
 st.subheader("Trend Panels")
-trend = {
-    "risk": trace_series(trace, "risk"),
-    "congestion": trace_series(trace, "congestion"),
-    "min_headway": trace_series(trace, "min_headway"),
-}
-st.line_chart(trend)
+st.line_chart(
+    {
+        "risk": trace_series(trace, "risk"),
+        "congestion": trace_series(trace, "congestion"),
+        "min_headway": trace_series(trace, "min_headway"),
+    }
+)
 
 st.subheader("Recent Action Log")
 start = max(0, step - 8)

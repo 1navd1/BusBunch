@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from statistics import mean
@@ -9,12 +10,15 @@ from typing import Any, Dict, List
 
 import streamlit as st
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.eval.runner import ScenarioGenerator, ScenarioRunner
 from src.policies.headway_policy import HeadwayPolicy
 from src.policies.rl_policy import RLPolicy
 from src.policies.static_policy import StaticPolicy
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 CHECKPOINT_PATH = ARTIFACTS_DIR / "ppo_checkpoint.json"
 

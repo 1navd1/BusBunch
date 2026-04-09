@@ -4,8 +4,10 @@ import time
 
 import streamlit as st
 
-from app.lib.data import apply_modifiers, run_policy_report, step_view
+from lib.data import apply_modifiers, run_policy_report, step_view
+from lib.ui import apply_theme, divider
 
+apply_theme()
 st.title("Why Bunching Happens")
 st.caption("Static schedules fail when delays accumulate unevenly")
 
@@ -21,25 +23,23 @@ max_step = len(trace) - 1
 step = st.slider("Replay step", min_value=0, max_value=max_step, value=min(40, max_step))
 frame = step_view(trace, step)
 
-col_a, col_b = st.columns([2, 1])
-
-with col_a:
+c1, c2 = st.columns([2, 1])
+with c1:
     st.subheader("Corridor Snapshot")
-    buses = frame["system_state"]["buses"]
-    for bus in buses:
+    for bus in frame["system_state"]["buses"]:
         label = f"{bus['bus_id']} | headway={bus['headway_forward_sec']:.1f}s | occ={bus['occupancy']:.2f}"
         st.progress(min(1.0, float(bus["occupancy"])), text=label)
 
-with col_b:
+with c2:
     st.subheader("At This Step")
-    st.metric("Bunching Events (step)", frame["bunching"])
+    st.metric("Bunching Events", frame["bunching"])
     st.metric("Predicted Risk", f"{frame['prediction_bundle']['bunching_risk_score']:.2f}")
     st.metric("Congestion Score", f"{frame['prediction_bundle']['congestion_score']:.2f}")
 
-st.markdown("### Headway Compression Replay")
+divider()
+st.subheader("Headway Compression Replay")
 play = st.button("Play 30-step animation")
 placeholder = st.empty()
-
 if play:
     for i in range(step, min(step + 30, max_step + 1)):
         f = step_view(trace, i)
@@ -47,7 +47,4 @@ if play:
         placeholder.line_chart({"min_headway": [min(hws)], "avg_headway": [sum(hws) / len(hws)]})
         time.sleep(0.05)
 
-st.warning(
-    "Bunching cascade: one delayed bus collects more passengers, increases dwell, gets slower; "
-    "the following bus catches up and headways collapse."
-)
+st.warning("Bunching cascade: delay increases dwell, following buses catch up, and headways collapse.")

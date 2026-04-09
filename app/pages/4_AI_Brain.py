@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.lib.data import apply_modifiers, explain_action, run_policy_report, step_view, trace_series
+from lib.data import apply_modifiers, explain_action, run_policy_report, step_view, trace_series
+from lib.ui import apply_theme, divider
 
+apply_theme()
 st.title("AI Brain")
 st.caption("Prediction + control reasoning behind each intervention")
 
@@ -19,19 +21,20 @@ step = st.slider("Replay step", min_value=0, max_value=len(trace) - 1, value=min
 frame = step_view(trace, step)
 
 st.subheader("Hybrid Loop")
-st.markdown(
-    "`SystemState -> Predictor.predict() -> PredictionBundle -> Policy.act() -> ControlAction -> Simulator.step()`"
+st.code(
+    "SystemState -> Predictor.predict() -> PredictionBundle -> Policy.act() -> ControlAction -> Simulator.step()",
+    language="text",
 )
 
-left, right = st.columns([1, 1])
+left, right = st.columns(2)
 with left:
     st.subheader("Prediction Bundle")
     st.json(frame["prediction_bundle"])
-
 with right:
     st.subheader("Control State")
     st.json(frame["control_state"])
 
+divider()
 st.subheader("Route Graph Snapshot")
 segments = frame["system_state"]["segments"]
 st.dataframe(
@@ -49,12 +52,13 @@ st.dataframe(
 )
 
 st.subheader("Temporal Signals")
-trend = {
-    "bunching_risk": trace_series(trace, "risk"),
-    "congestion": trace_series(trace, "congestion"),
-    "avg_occupancy": trace_series(trace, "avg_occupancy"),
-}
-st.line_chart(trend)
+st.line_chart(
+    {
+        "bunching_risk": trace_series(trace, "risk"),
+        "congestion": trace_series(trace, "congestion"),
+        "avg_occupancy": trace_series(trace, "avg_occupancy"),
+    }
+)
 
 st.subheader("Decision Explanation")
 st.info(explain_action(frame))
