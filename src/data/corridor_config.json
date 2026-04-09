@@ -1,0 +1,29 @@
+{
+  "corridor_id": "bmtc_corridor_kbs_mg_road_domlur",
+  "corridor_name": "KBS-MG Road-Domlur",
+  "n_buses": 3,
+  "bus_capacity": 90,
+  "initial_headways_sec": [210, 320, 370],
+  "segment_base_travel_time_sec": [85, 95, 80, 78, 88, 92, 86, 90, 96, 104],
+  "dwell": {
+    "base_sec": 12,
+    "board_sec_per_passenger": 2.0,
+    "alight_sec_per_passenger": 1.2,
+    "max_sec": 95
+  },
+  "dispatch": {
+    "target_headway_sec": 300,
+    "max_offset_sec": 120
+  },
+  "controls": {
+    "max_hold_sec": 60,
+    "max_speed_delta_pct": 0.2,
+    "max_dispatch_offset_sec": 90
+  },
+  "sim": {
+    "tick_sec": 30,
+    "max_steps_peak": 180,
+    "max_steps_off_peak": 140,
+    "bunching_threshold_sec": 180
+  }
+}

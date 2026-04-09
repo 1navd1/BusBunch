@@ -1,0 +1,12 @@
+{
+  "weekday": {
+    "peak": {
+      "base": 1.0,
+      "amplitude": 0.35
+    },
+    "off_peak": {
+      "base": 0.92,
+      "amplitude": 0.18
+    }
+  }
+}

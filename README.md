@@ -71,14 +71,20 @@ Core types are in `src/models/contracts.py`:
 6. Runner records trace + metrics for replay and evaluation.
 
 ## Run Instructions
-### 0) Install dependencies
+### 0) Clone and enter project
+```bash
+git clone <your-repo-url>
+cd BusBunch
+```
+
+### 1) Create virtual environment and install dependencies
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 1) Generate comparison artifacts
+### 2) Generate comparison artifacts (train/evaluate + export JSON)
 ```bash
 python3 -m src.eval.compare
 ```
@@ -89,10 +95,70 @@ This writes:
 - `artifacts/comparison_full.json`
 - `artifacts/ppo_checkpoint.json`
 
-### 2) Launch Streamlit demo
+### 3) Launch Streamlit demo
 ```bash
 streamlit run app/Home.py
 ```
+
+### 4) Open in browser
+```text
+http://localhost:8501
+```
+
+### Quick rerun commands (after first setup)
+```bash
+cd /home/bharath/code/BusBunch
+source .venv/bin/activate
+python3 -m src.eval.compare
+streamlit run app/Home.py
+```
+
+### Run using explicit venv binaries (without activating shell)
+```bash
+cd /home/bharath/code/BusBunch
+.venv/bin/python -m src.eval.compare
+.venv/bin/streamlit run app/Home.py
+```
+
+### Optional: run Streamlit on a custom port
+```bash
+streamlit run app/Home.py --server.port 8502
+```
+
+### Optional: clean and regenerate artifacts
+```bash
+rm -f artifacts/kpi_summary.json artifacts/demo_seed.json artifacts/comparison_full.json artifacts/ppo_checkpoint.json
+python3 -m src.eval.compare
+```
+
+## APIs and Configuration
+This project runs end-to-end **without any API keys** in its current MVP form.
+
+### Required APIs
+- None
+
+### Optional APIs (future upgrade path)
+- Google Maps Distance Matrix / Routes API for real travel-time priors
+- OpenStreetMap-based routing stack (self-hosted or external service)
+- BMTC/GTFS/live feed sources if available
+
+### If you add APIs, store keys safely
+Create a local `.env` file (do not commit secrets):
+```bash
+cp .env.example .env
+```
+
+Suggested keys:
+```bash
+GOOGLE_MAPS_API_KEY=your_key_here
+TRAFFIC_PROVIDER=osm
+BMTC_FEED_URL=
+```
+
+### Important
+- Never hardcode API keys in Python files.
+- Add `.env` to `.gitignore` if not already ignored.
+- Current code paths do not require these values; they are only for optional extensions.
 
 ## Streamlit Demo Flow (2-3 minutes)
 ### Page 1: Why Bunching Happens

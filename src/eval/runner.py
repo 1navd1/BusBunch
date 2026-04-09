@@ -1,30 +1,12 @@
 from __future__ import annotations
 
-import math
-import random
 from dataclasses import asdict
 from typing import Dict, List, Tuple
 
-from src.models.contracts import (
-    BusState,
-    ControlAction,
-    ControlState,
-    EpisodeMetrics,
-    EpisodeReport,
-    SegmentState,
-    StopState,
-    SystemState,
-)
+from src.models.contracts import ControlAction, ControlState, EpisodeMetrics, EpisodeReport
 from src.models.predictor import GraphAwarePredictor
-
-
-def _clip(x: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, x))
-
-
-def _std(values: List[float]) -> float:
-    mean = sum(values) / len(values)
-    return (sum((x - mean) ** 2 for x in values) / len(values)) ** 0.5
+from src.sim.entities import EpisodeScenario
+from src.sim.simulator import Simulator
 
 
 class ScenarioConfig:
@@ -48,266 +30,150 @@ class ScenarioConfig:
 class ScenarioGenerator:
     @staticmethod
     def create(day_type: str, peak_profile: str) -> ScenarioConfig:
-        cfg = ScenarioConfig(day_type=day_type, peak_profile=peak_profile)
+        sim = Simulator()
+        base_steps = int(sim.corridor_cfg["sim"]["max_steps_peak"])
         if peak_profile == "off_peak":
-            cfg.max_steps = 140
-        return cfg
+            base_steps = int(sim.corridor_cfg["sim"]["max_steps_off_peak"])
+
+        return ScenarioConfig(
+            n_buses=int(sim.corridor_cfg["n_buses"]),
+            max_steps=base_steps,
+            cycle_time_sec=float(sum(sim.corridor_cfg["segment_base_travel_time_sec"])),
+            bunching_threshold_sec=float(sim.corridor_cfg["sim"]["bunching_threshold_sec"]),
+            day_type=day_type,
+            peak_profile=peak_profile,
+        )
 
 
-class MiniBusEnv:
-    """Simplified corridor simulator for policy development and demo artifacts."""
+class ControlEnv:
+    """RL wrapper over the custom simulator for PPO training/evaluation."""
 
-    def __init__(self, config: ScenarioConfig | None = None):
-        self.cfg = config or ScenarioConfig()
-        self.predictor = GraphAwarePredictor(self.cfg.n_buses)
-        self.rng = random.Random(7)
-
-        self.step_idx = 0
-        self.headways = [self.cfg.cycle_time_sec / self.cfg.n_buses for _ in range(self.cfg.n_buses)]
-        self.occupancies = [0.5 for _ in range(self.cfg.n_buses)]
-        self.total_hold = 0.0
-        self.total_delay = 0.0
-        self.total_fuel = 0.0
-        self.bunching_count = 0
-        self.history: List[Dict] = []
+    def __init__(self, scenario: ScenarioConfig | None = None):
+        self.scenario = scenario or ScenarioGenerator.create("weekday", "peak")
+        self.sim = Simulator()
+        self.predictor = GraphAwarePredictor(num_buses=self.scenario.n_buses)
 
     @property
     def obs_dim(self) -> int:
-        # compact ControlState-like features for one controlled bus
         return 8
 
     @property
     def action_dim(self) -> int:
         return 3
 
-    def _context(self) -> Tuple[float, float, float, float]:
-        phase = 2 * math.pi * (self.step_idx % 60) / 60.0
-        time_sin = math.sin(phase)
-        time_cos = math.cos(phase)
-        traffic = 0.45 + 0.35 * max(0.0, time_sin)
-        demand = 0.4 + 0.4 * max(0.0, time_sin)
-        return time_sin, time_cos, demand, traffic
+    def _focused_bus_idx(self, system_state) -> int:
+        fwd = [b.headway_forward_sec for b in system_state.buses]
+        return min(range(len(fwd)), key=lambda i: fwd[i])
 
-    def _focused_bus_idx(self) -> int:
-        return min(range(self.cfg.n_buses), key=lambda i: self.headways[i])
-
-    def _system_state(self) -> SystemState:
-        time_sin, _, demand, traffic = self._context()
-        mean_h = sum(self.headways) / len(self.headways)
-        buses = []
-        for i in range(self.cfg.n_buses):
-            buses.append(
-                BusState(
-                    bus_id=f"bus_{i+1}",
-                    stop_index=i,
-                    position_progress=float((self.step_idx % 10) / 10.0),
-                    occupancy=self.occupancies[i],
-                    delay_sec=max(0.0, self.headways[i] - mean_h),
-                    headway_forward_sec=self.headways[i],
-                    headway_backward_sec=self.headways[(i - 1) % self.cfg.n_buses],
-                    status="in_service" if i != 0 else "terminal" if self.step_idx % 15 == 0 else "in_service",
-                )
-            )
-
-        stops = [StopState(stop_id=f"stop_{i+1}", queue_len=int(10 + 12 * demand)) for i in range(self.cfg.n_buses)]
-        segments = [
-            SegmentState(
-                segment_id=f"seg_{i+1}",
-                from_stop_id=f"stop_{i+1}",
-                to_stop_id=f"stop_{(i + 1) % self.cfg.n_buses + 1}",
-                base_travel_time_sec=90.0,
-                traffic_multiplier=traffic,
-            )
-            for i in range(self.cfg.n_buses)
-        ]
-
-        return SystemState(
-            timestamp=self.step_idx,
-            buses=buses,
-            stops=stops,
-            segments=segments,
-            terminal_queue={"main_terminal": 1 if self.step_idx % 15 == 0 else 0},
-            global_traffic_context={"traffic_level": traffic, "demand_level": demand, "time_sin": time_sin},
+    def _control_state(self, system_state, prediction_bundle) -> ControlState:
+        i = self._focused_bus_idx(system_state)
+        bus = system_state.buses[i]
+        demand_est = prediction_bundle.stop_demand_forecast[i % len(prediction_bundle.stop_demand_forecast)]
+        return ControlState(
+            current_bus_delay_sec=bus.delay_sec,
+            forward_headway_sec=bus.headway_forward_sec,
+            backward_headway_sec=bus.headway_backward_sec,
+            occupancy_ratio=bus.occupancy,
+            stop_demand_estimate=demand_est,
+            predicted_corridor_congestion_score=prediction_bundle.congestion_score,
+            predicted_bunching_risk=prediction_bundle.bunching_risk_score,
+            is_terminal=(bus.status == "terminal"),
         )
 
-    def _control_state_and_prediction(self) -> Tuple[ControlState, object]:
-        s = self._system_state()
-        pred = self.predictor.predict(s)
-        i = self._focused_bus_idx()
-        mean_h = sum(self.headways) / len(self.headways)
-        control = ControlState(
-            current_bus_delay_sec=max(0.0, self.headways[i] - mean_h),
-            forward_headway_sec=self.headways[i],
-            backward_headway_sec=self.headways[(i - 1) % self.cfg.n_buses],
-            occupancy_ratio=self.occupancies[i],
-            stop_demand_estimate=pred.stop_demand_forecast[i],
-            predicted_corridor_congestion_score=pred.congestion_score,
-            predicted_bunching_risk=pred.bunching_risk_score,
-            is_terminal=(i == 0 and self.step_idx % 15 == 0),
-        )
-        return control, pred
-
-    def _obs(self) -> List[float]:
-        control, pred = self._control_state_and_prediction()
+    @staticmethod
+    def _obs_from_control(control_state: ControlState) -> List[float]:
         return [
-            control.current_bus_delay_sec / 600.0,
-            control.forward_headway_sec / 600.0,
-            control.backward_headway_sec / 600.0,
-            control.occupancy_ratio,
-            control.stop_demand_estimate / 12.0,
-            pred.congestion_score,
-            pred.bunching_risk_score,
-            1.0 if control.is_terminal else 0.0,
+            control_state.current_bus_delay_sec / 600.0,
+            control_state.forward_headway_sec / 600.0,
+            control_state.backward_headway_sec / 600.0,
+            control_state.occupancy_ratio,
+            control_state.stop_demand_estimate / 12.0,
+            control_state.predicted_corridor_congestion_score,
+            control_state.predicted_bunching_risk,
+            1.0 if control_state.is_terminal else 0.0,
         ]
 
-    def _vector_to_action(self, a: List[float]) -> ControlAction:
-        vec = [_clip(x, -1.0, 1.0) for x in a]
+    @staticmethod
+    def vector_to_action(vec: List[float]) -> ControlAction:
+        v0 = max(-1.0, min(1.0, vec[0]))
+        v1 = max(-1.0, min(1.0, vec[1]))
+        v2 = max(-1.0, min(1.0, vec[2]))
         return ControlAction(
-            hold_sec=max(0.0, vec[0]) * 60.0,
-            speed_delta_pct=vec[1] * 0.2,
-            dispatch_offset_sec=max(0.0, vec[2]) * 90.0,
+            hold_sec=max(0.0, v0) * 60.0,
+            speed_delta_pct=v1 * 0.2,
+            dispatch_offset_sec=max(0.0, v2) * 90.0,
         )
 
     def reset(self, seed: int | None = None) -> List[float]:
-        if seed is not None:
-            self.rng = random.Random(seed)
-
-        self.step_idx = 0
-        self.headways = [210.0, 320.0, 370.0]
-        self.occupancies = [0.75, 0.45, 0.38]
-        self.total_hold = 0.0
-        self.total_delay = 0.0
-        self.total_fuel = 0.0
-        self.bunching_count = 0
-        self.history = []
-        return self._obs()
-
-    def step_action(self, action: ControlAction):
-        hold = action.hold_sec / 60.0
-        speed_red = max(0.0, -action.speed_delta_pct / 0.2)
-        dispatch_off = action.dispatch_offset_sec / 90.0
-
-        self.total_hold += action.hold_sec
-        self.total_delay += hold * 25.0 + speed_red * 10.0 + dispatch_off * 15.0
-
-        time_sin, _, demand, traffic = self._context()
-        mean_hw = sum(self.headways) / len(self.headways)
-        imbalance = [h - mean_hw for h in self.headways]
-
-        stochastic = [self.rng.gauss(0.0, 8.0) for _ in self.headways]
-        traffic_push = [(traffic - 0.45) * 16.0, (traffic - 0.45) * -8.0, (traffic - 0.45) * -8.0]
-
-        natural = [
-            self.headways[i] + 0.16 * imbalance[i] + stochastic[i] + traffic_push[i]
-            for i in range(self.cfg.n_buses)
-        ]
-
-        control_strength = 0.38 * hold + 0.25 * speed_red + 0.28 * dispatch_off
-        controlled = [natural[i] - control_strength * imbalance[i] for i in range(self.cfg.n_buses)]
-        self.headways = [_clip(x, 55.0, 560.0) for x in controlled]
-
-        scale = self.cfg.cycle_time_sec / sum(self.headways)
-        self.headways = [h * scale for h in self.headways]
-
-        occ_noise = [self.rng.gauss(0.0, 0.03) for _ in self.occupancies]
-        mean_h = sum(self.headways) / len(self.headways)
-        self.occupancies = [
-            _clip(
-                self.occupancies[i] + 0.08 * demand - 0.06 * (self.headways[i] / mean_h) + occ_noise[i],
-                0.08,
-                1.0,
-            )
-            for i in range(self.cfg.n_buses)
-        ]
-
-        bunching = sum(1 for h in self.headways if h < self.cfg.bunching_threshold_sec)
-        self.bunching_count += bunching
-
-        hw_std = _std(self.headways)
-        wait_proxy = sum(self.headways) / len(self.headways) / 2.0 + 0.35 * hw_std
-        occ_std = _std(self.occupancies)
-
-        fuel_step = 1.0 + 0.15 * hold + 0.1 * speed_red + 0.06 * dispatch_off + 0.2 * traffic
-        self.total_fuel += fuel_step
-
-        peak_weight = 1.2 if time_sin > 0.4 else 1.0
-        reward = -(
-            peak_weight * (2.8 * bunching + 0.015 * hw_std + 0.004 * wait_proxy + 0.8 * occ_std)
-            + 0.18 * fuel_step
-            + 0.05 * (hold + speed_red + dispatch_off)
+        scenario = EpisodeScenario(
+            day_type=self.scenario.day_type,
+            peak_profile=self.scenario.peak_profile,
+            max_steps=self.scenario.max_steps,
+            seed=7 if seed is None else int(seed),
         )
+        self.sim.reset(scenario)
 
-        self.step_idx += 1
-        done = self.step_idx >= self.cfg.max_steps
+        state = self.sim.current_system_state()
+        pred = self.predictor.predict(state)
+        control = self._control_state(state, pred)
+        return self._obs_from_control(control)
 
-        control_state, pred = self._control_state_and_prediction()
-        self.history.append(
-            {
-                "step": self.step_idx,
-                "system_state": asdict(self._system_state()),
-                "control_state": asdict(control_state),
-                "prediction_bundle": asdict(pred),
-                "action": asdict(action),
-                "bunching": int(bunching),
-                "reward": round(float(reward), 4),
-            }
-        )
+    def step(self, action_vec: List[float]) -> Tuple[List[float], float, bool, Dict]:
+        action = self.vector_to_action(action_vec)
+        next_state, reward, done, info = self.sim.step(action)
 
-        info = {
-            "bunching": bunching,
-            "headway_std": hw_std,
-            "wait_proxy": wait_proxy,
-            "occupancy_std": occ_std,
-            "fuel_proxy_step": fuel_step,
-        }
-        return self._obs(), float(reward), done, info
+        pred = self.predictor.predict(next_state)
+        control = self._control_state(next_state, pred)
+        obs = self._obs_from_control(control)
+        return obs, reward, done, info
 
-    def step(self, action_vector: List[float]):
-        action = self._vector_to_action(action_vector)
-        return self.step_action(action)
+
+# Backward-compatible alias used by compare.py.
+MiniBusEnv = ControlEnv
 
 
 class ScenarioRunner:
     @staticmethod
     def run(policy, scenario: ScenarioConfig, seed: int = 7) -> EpisodeReport:
-        env = MiniBusEnv(scenario)
+        env = ControlEnv(scenario)
         _ = env.reset(seed=seed)
         done = False
         total_reward = 0.0
-        hw_stds: List[float] = []
-        waits: List[float] = []
-        occ_stds: List[float] = []
-        fuels: List[float] = []
+
+        trace: List[Dict] = []
 
         while not done:
-            control_state, prediction_bundle = env._control_state_and_prediction()
-            action = policy.act(control_state, prediction_bundle)
-            _, reward, done, info = env.step_action(action)
-            total_reward += reward
-            hw_stds.append(info["headway_std"])
-            waits.append(info["wait_proxy"])
-            occ_stds.append(info["occupancy_std"])
-            fuels.append(info["fuel_proxy_step"])
+            system_state = env.sim.current_system_state()
+            prediction_bundle = env.predictor.predict(system_state)
+            control_state = env._control_state(system_state, prediction_bundle)
 
-        metrics = EpisodeMetrics(
-            bunching_count=int(env.bunching_count),
-            headway_std=float(sum(hw_stds) / len(hw_stds)),
-            avg_wait_time=float(sum(waits) / len(waits)),
-            occupancy_std=float(sum(occ_stds) / len(occ_stds)),
-            fuel_proxy=float(sum(fuels)),
-            total_delay=float(env.total_delay),
-        )
+            action = policy.act(control_state, prediction_bundle)
+            next_state, reward, done, info = env.sim.step(action)
+            total_reward += reward
+
+            trace.append(
+                env.sim.snapshot_json(
+                    system_state=next_state,
+                    action=action,
+                    reward=reward,
+                    bunching=int(info["bunching"]),
+                    prediction_bundle=asdict(prediction_bundle),
+                    control_state=asdict(control_state),
+                )
+            )
+
+        metrics = env.sim.episode_metrics()
         return EpisodeReport(
             policy_name=getattr(policy, "name", policy.__class__.__name__),
             seed=seed,
             total_reward=float(total_reward),
             metrics=metrics,
-            trace=env.history,
+            trace=trace,
         )
 
 
-def run_episode(env: MiniBusEnv, policy, seed: int = 7) -> Tuple[EpisodeMetrics, List[Dict], float]:
-    report = ScenarioRunner.run(policy, env.cfg, seed)
+def run_episode(env: ControlEnv, policy, seed: int = 7) -> Tuple[EpisodeMetrics, List[Dict], float]:
+    report = ScenarioRunner.run(policy, env.scenario, seed)
     return report.metrics, report.trace, report.total_reward
 
 

@@ -1,0 +1,14 @@
+{
+  "weekday": {
+    "peak": {
+      "base_per_min": 1.6,
+      "amplifier": 1.8,
+      "stop_weights": [1.2, 1.1, 1.0, 1.0, 1.1, 1.3, 1.1, 1.0, 1.4, 1.2]
+    },
+    "off_peak": {
+      "base_per_min": 1.0,
+      "amplifier": 1.2,
+      "stop_weights": [1.0, 0.9, 0.9, 0.9, 1.0, 1.1, 1.0, 0.9, 1.1, 1.0]
+    }
+  }
+}

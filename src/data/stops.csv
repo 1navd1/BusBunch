@@ -1,0 +1,11 @@
+stop_id,stop_name,lat,lon,order
+S1,Kempegowda_Bus_Station,12.9784,77.5725,1
+S2,Majestic_Market,12.9767,77.5748,2
+S3,Freedom_Park,12.9812,77.5848,3
+S4,Vidhana_Soudha,12.9799,77.5913,4
+S5,Cubbon_Park,12.9763,77.5952,5
+S6,MG_Road,12.9755,77.6068,6
+S7,Trinity,12.9735,77.6170,7
+S8,Ulsoor,12.9768,77.6244,8
+S9,Indiranagar_100ft,12.9784,77.6408,9
+S10,Domlur,12.9602,77.6382,10
