@@ -19,6 +19,30 @@ def apply_theme() -> None:
   --muted: #5b6b62;
   --line: rgba(16, 34, 26, 0.12);
   --accent: #0f766e;
+  --card: rgba(255,255,255,0.80);
+  --sidebar-bg: linear-gradient(180deg, rgba(16,34,26,0.96), rgba(26,48,38,0.94));
+}
+
+html[data-theme="light"] {
+  --bg-a: #f7f7f4;
+  --bg-b: #eaf0eb;
+  --ink: #10221a;
+  --muted: #5b6b62;
+  --line: rgba(16, 34, 26, 0.12);
+  --accent: #0f766e;
+  --card: rgba(255,255,255,0.80);
+  --sidebar-bg: linear-gradient(180deg, rgba(16,34,26,0.96), rgba(26,48,38,0.94));
+}
+
+html[data-theme="dark"] {
+  --bg-a: #0e1513;
+  --bg-b: #13211c;
+  --ink: #ebf4ef;
+  --muted: #b8c9bf;
+  --line: rgba(223, 240, 232, 0.18);
+  --accent: #34d399;
+  --card: rgba(14, 24, 20, 0.72);
+  --sidebar-bg: linear-gradient(180deg, rgba(8,16,13,0.98), rgba(12,20,17,0.98));
 }
 
 .stApp {
@@ -43,15 +67,12 @@ p, li, .stCaption {
 [data-testid="stMetric"] {
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255,255,255,0.80);
+  background: var(--card);
   padding: 0.35rem 0.55rem;
 }
 
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, rgba(16,34,26,0.96), rgba(26,48,38,0.94));
-}
-[data-testid="stSidebar"] * {
-  color: #ecf5ee !important;
+  background: var(--sidebar-bg);
 }
 
 .stButton > button {
@@ -69,14 +90,14 @@ p, li, .stCaption {
 
 .block-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(16,34,26,0.22), transparent);
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
   margin: 0.75rem 0 1rem;
 }
 
 .story-card {
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255,255,255,0.78);
+  background: var(--card);
   padding: 1rem 1rem 0.85rem;
   box-shadow: 0 12px 32px rgba(16, 34, 26, 0.06);
 }
@@ -104,7 +125,7 @@ p, li, .stCaption {
   border-radius: 999px;
   padding: 0.3rem 0.65rem;
   background: rgba(15,118,110,0.10);
-  border: 1px solid rgba(15,118,110,0.18);
+  border: 1px solid rgba(15,118,110,0.24);
   color: var(--ink);
   font-size: 0.92rem;
   font-weight: 600;
