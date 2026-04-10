@@ -13,8 +13,8 @@ The demo is designed as a lean product simulation:
 ## What Is Implemented
 - custom corridor simulator in `src/sim/`
 - shared system contracts in `src/models/contracts.py`
-- graph-aware prediction interface in `src/models/predictor.py`
-- static, heuristic, and RL-style policies in `src/policies/`
+- STGNN predictor + inference wrapper in `src/models/stgnn.py` and `src/models/stgnn_infer.py`
+- static, heuristic, and SB3 PPO policies in `src/policies/`
 - evaluation and artifact generation in `src/eval/compare.py`
 - Streamlit visual demo in `app/`
 
@@ -27,6 +27,9 @@ The demo is designed as a lean product simulation:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+python3 -m src.train.generate_rollouts
+python3 -m src.train.train_stgnn
+python3 -m src.train.train_ppo
 python3 -m src.eval.compare
 streamlit run app/Home.py
 ```
@@ -41,14 +44,16 @@ Running `python3 -m src.eval.compare` writes:
 - `artifacts/kpi_summary.json`
 - `artifacts/demo_seed.json`
 - `artifacts/comparison_full.json`
-- `artifacts/ppo_checkpoint.json`
+- `artifacts/models/ppo_best.zip` (loaded by policy inference)
+- `artifacts/models/stgnn_best.pt`
+- `artifacts/models/stgnn_norm.json`
 
 These are used for deterministic replay in the Streamlit app.
 
 ## Current Hackathon Simplifications
 - one corridor instead of the full BMTC network
-- lightweight graph-aware forecaster instead of a full trained STGNN
-- lightweight PPO-style trainer fallback instead of a heavy dependency stack
+- synthetic data instead of production AVL/APC feed
+- single-corridor modeling for fast iteration
 - synthetic but BMTC-shaped passenger and traffic behavior
 
 ## Current UX

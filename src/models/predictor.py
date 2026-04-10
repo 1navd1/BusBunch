@@ -4,6 +4,7 @@ from dataclasses import asdict
 from typing import Dict, Iterable, List
 
 from .contracts import PredictionBundle, SystemState
+from .stgnn_infer import STGNNPredictor
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -15,6 +16,11 @@ class Predictor:
 
     def predict(self, sim_state: SystemState) -> PredictionBundle:
         raise NotImplementedError
+
+
+def load_default_predictor() -> Predictor:
+    """Default predictor backend: trained STGNN checkpoint."""
+    return STGNNPredictor()
 
 
 class GraphAwarePredictor(Predictor):

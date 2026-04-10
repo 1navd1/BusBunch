@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.models.contracts import ControlAction, ControlState, EpisodeMetrics, EpisodeReport
-from src.models.predictor import GraphAwarePredictor
+from src.models.stgnn_infer import STGNNPredictor
 from src.sim.entities import EpisodeScenario
 from src.sim.simulator import Simulator
 
@@ -46,12 +47,23 @@ class ScenarioGenerator:
 
 
 class ControlEnv:
-    """RL wrapper over the custom simulator for PPO training/evaluation."""
+    """Replay/eval wrapper over simulator using checkpoint-backed STGNN."""
 
-    def __init__(self, scenario: ScenarioConfig | None = None):
+    def __init__(
+        self,
+        scenario: ScenarioConfig | None = None,
+        stgnn_checkpoint: str = "artifacts/models/stgnn_best.pt",
+        stgnn_norm: str = "artifacts/models/stgnn_norm.json",
+    ):
         self.scenario = scenario or ScenarioGenerator.create("weekday", "peak")
         self.sim = Simulator()
-        self.predictor = GraphAwarePredictor(num_buses=self.scenario.n_buses)
+
+        if not Path(stgnn_checkpoint).exists() or not Path(stgnn_norm).exists():
+            raise FileNotFoundError(
+                "Missing STGNN artifacts. Expected artifacts/models/stgnn_best.pt and "
+                "artifacts/models/stgnn_norm.json. Run `python3 -m src.train.train_stgnn` first."
+            )
+        self.predictor = STGNNPredictor(checkpoint_path=stgnn_checkpoint, norm_path=stgnn_norm)
 
     @property
     def obs_dim(self) -> int:
@@ -90,7 +102,7 @@ class ControlEnv:
             control_state.forward_headway_sec / 600.0,
             control_state.backward_headway_sec / 600.0,
             control_state.occupancy_ratio,
-            control_state.stop_demand_estimate / 12.0,
+            control_state.stop_demand_estimate / 80.0,
             control_state.predicted_corridor_congestion_score,
             control_state.predicted_bunching_risk,
             1.0 if control_state.is_terminal else 0.0,
@@ -131,7 +143,6 @@ class ControlEnv:
         return obs, reward, done, info
 
 
-# Backward-compatible alias used by compare.py.
 MiniBusEnv = ControlEnv
 
 

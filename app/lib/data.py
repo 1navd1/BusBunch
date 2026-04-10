@@ -18,7 +18,7 @@ from src.policies.rl_policy import RLPolicy
 from src.policies.static_policy import StaticPolicy
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
-CHECKPOINT_PATH = ARTIFACTS_DIR / "ppo_checkpoint.json"
+CHECKPOINT_PATH = ARTIFACTS_DIR / "models" / "ppo_best.zip"
 STATIC_ROUTE_COLOR = [185, 28, 28, 220]
 AI_ROUTE_COLOR = [15, 118, 110, 230]
 

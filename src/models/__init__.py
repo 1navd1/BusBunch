@@ -9,7 +9,8 @@ from .contracts import (
     StopState,
     SystemState,
 )
-from .predictor import GraphAwarePredictor, Predictor
+from .predictor import GraphAwarePredictor, Predictor, load_default_predictor
+from .stgnn_infer import STGNNPredictor
 
 __all__ = [
     "BusState",
@@ -23,4 +24,6 @@ __all__ = [
     "EpisodeReport",
     "Predictor",
     "GraphAwarePredictor",
+    "STGNNPredictor",
+    "load_default_predictor",
 ]

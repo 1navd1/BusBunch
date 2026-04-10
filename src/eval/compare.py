@@ -7,7 +7,6 @@ from statistics import mean
 from typing import Dict, List
 
 from src.eval.runner import ScenarioConfig, ScenarioGenerator, ScenarioRunner
-from src.models.ppo_policy import PPOConfig, PPOTrainer
 from src.policies.headway_policy import HeadwayPolicy
 from src.policies.rl_policy import RLPolicy
 from src.policies.static_policy import StaticPolicy
@@ -57,26 +56,21 @@ def run_comparison(out_dir: str = "artifacts") -> Dict:
 
     scenario = ScenarioGenerator.create(day_type="weekday", peak_profile="peak")
 
-    # The compact control-state observation is fixed to 8, action dims fixed to 3 in runner.
-    obs_dim, action_dim = 8, 3
-
-    trainer = PPOTrainer(
-        obs_dim=obs_dim,
-        action_dim=action_dim,
-        config=PPOConfig(total_steps=5400, rollout_steps=180, seed=11, population=12, noise_std=0.11),
-    )
-
-    # Use an internal env from runner-compatible simplified simulator.
-    from src.eval.runner import MiniBusEnv
-
-    train_log = trainer.train(MiniBusEnv(scenario))
-    ckpt_path = out / "ppo_checkpoint.json"
-    trainer.save(str(ckpt_path))
+    ckpt_path = out / "models" / "ppo_best.zip"
+    stgnn_path = out / "models" / "stgnn_best.pt"
+    stgnn_norm = out / "models" / "stgnn_norm.json"
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Missing PPO checkpoint at {ckpt_path}. Run `python3 -m src.train.train_ppo` first.")
+    if not stgnn_path.exists() or not stgnn_norm.exists():
+        raise FileNotFoundError(
+            "Missing STGNN artifacts at artifacts/models/stgnn_best.pt and artifacts/models/stgnn_norm.json. "
+            "Run `python3 -m src.train.train_stgnn` first."
+        )
 
     seeds = [3, 7, 11, 17, 23]
     static_res = evaluate_policy(StaticPolicy(), seeds, scenario)
     headway_res = evaluate_policy(HeadwayPolicy(), seeds, scenario)
-    ppo_res = evaluate_policy(RLPolicy(str(ckpt_path), obs_dim=obs_dim), seeds, scenario)
+    ppo_res = evaluate_policy(RLPolicy(str(ckpt_path), obs_dim=8), seeds, scenario)
 
     def pct_improve(metric: str) -> float:
         base = static_res["mean_metrics"][metric]
@@ -93,9 +87,8 @@ def run_comparison(out_dir: str = "artifacts") -> Dict:
 
     kpi = {
         "training": {
-            "episodes_seen": len(train_log["episode_reward"]),
-            "last_episode_reward": round(train_log["episode_reward"][-1], 4) if train_log["episode_reward"] else None,
-            "best_episode_reward": round(max(train_log["episode_reward"]), 4) if train_log["episode_reward"] else None,
+            "checkpoint": str(ckpt_path),
+            "stgnn": str(stgnn_path),
         },
         "results": {
             "static": {"mean_reward": static_res["mean_reward"], **static_res["mean_metrics"]},
@@ -114,7 +107,6 @@ def run_comparison(out_dir: str = "artifacts") -> Dict:
         },
     }
 
-    # Best-seed replay for deterministic demo.
     best = ppo_res["best"]
     demo_seed = {
         "policy": "ppo",
