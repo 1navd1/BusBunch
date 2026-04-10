@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import copy
-import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from statistics import mean
 from typing import Any, Dict, List
 
 import streamlit as st
@@ -43,28 +41,6 @@ def _bus_icon_data(fill_hex: str) -> Dict[str, Any]:
         "height": 96,
         "anchorY": 72,
     }
-
-
-def _std(values: List[float]) -> float:
-    if not values:
-        return 0.0
-    m = sum(values) / len(values)
-    return (sum((x - m) ** 2 for x in values) / len(values)) ** 0.5
-
-
-@st.cache_data
-def load_json(path: str) -> Dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-@st.cache_data
-def load_demo_seed() -> Dict[str, Any]:
-    return load_json(str(ARTIFACTS_DIR / "demo_seed.json"))
-
-
-@st.cache_data
-def load_kpi_summary() -> Dict[str, Any]:
-    return load_json(str(ARTIFACTS_DIR / "kpi_summary.json"))
 
 
 @st.cache_data
@@ -131,45 +107,6 @@ def apply_modifiers(trace: List[Dict[str, Any]], traffic_spike: bool, passenger_
     return out
 
 
-def summarize_trace(trace: List[Dict[str, Any]]) -> Dict[str, float]:
-    if not trace:
-        return {
-            "bunching_count": 0.0,
-            "avg_wait_time": 0.0,
-            "occupancy_std": 0.0,
-            "headway_std": 0.0,
-            "fuel_proxy": 0.0,
-            "total_delay": 0.0,
-        }
-
-    bunch = 0
-    waits, occ_stds, hw_stds = [], [], []
-    fuel_proxy, total_delay = 0.0, 0.0
-
-    for frame in trace:
-        buses = frame["system_state"]["buses"]
-        hws = [float(b["headway_forward_sec"]) for b in buses]
-        occ = [float(b["occupancy"]) for b in buses]
-
-        bunch += int(frame["bunching"])
-        waits.append(sum(hws) / len(hws) / 2.0)
-        occ_stds.append(_std(occ))
-        hw_stds.append(_std(hws))
-
-        a = frame["action"]
-        fuel_proxy += 1.0 + 0.01 * a["hold_sec"] + 1.5 * abs(a["speed_delta_pct"]) + 0.002 * a["dispatch_offset_sec"]
-        total_delay += 0.6 * a["hold_sec"] + 0.3 * a["dispatch_offset_sec"]
-
-    return {
-        "bunching_count": round(float(bunch), 4),
-        "avg_wait_time": round(float(mean(waits)), 4),
-        "occupancy_std": round(float(mean(occ_stds)), 4),
-        "headway_std": round(float(mean(hw_stds)), 4),
-        "fuel_proxy": round(float(fuel_proxy), 4),
-        "total_delay": round(float(total_delay), 4),
-    }
-
-
 @st.cache_data
 def compare_reports(seed: int, peak_profile: str) -> Dict[str, Any]:
     static_r = run_policy_report("static", seed, peak_profile)
@@ -198,24 +135,6 @@ def compare_reports(seed: int, peak_profile: str) -> Dict[str, Any]:
 def step_view(trace: List[Dict[str, Any]], step: int) -> Dict[str, Any]:
     idx = max(0, min(step, len(trace) - 1))
     return trace[idx]
-
-
-def trace_series(trace: List[Dict[str, Any]], key: str) -> List[float]:
-    out: List[float] = []
-    for frame in trace:
-        if key == "risk":
-            out.append(float(frame["prediction_bundle"]["bunching_risk_score"]))
-        elif key == "congestion":
-            out.append(float(frame["prediction_bundle"]["congestion_score"]))
-        elif key == "reward":
-            out.append(float(frame["reward"]))
-        elif key == "min_headway":
-            buses = frame["system_state"]["buses"]
-            out.append(min(float(b["headway_forward_sec"]) for b in buses))
-        elif key == "avg_occupancy":
-            buses = frame["system_state"]["buses"]
-            out.append(mean(float(b["occupancy"]) for b in buses))
-    return out
 
 
 def explain_action(frame: Dict[str, Any]) -> str:
@@ -340,8 +259,8 @@ def primary_bunching_bus(frame: Dict[str, Any]) -> Dict[str, Any]:
     return min(buses, key=lambda bus: float(bus["headway_forward_sec"]))
 
 
-def map_payload(frame: Dict[str, Any], policy_name: str) -> Dict[str, Any]:
-    focus_bus_id = frame.get("control_state", {}).get("focus_bus_id")
+def map_payload(frame: Dict[str, Any], policy_name: str, selected_bus_id: str | None = None) -> Dict[str, Any]:
+    focus_bus_id = selected_bus_id or frame.get("control_state", {}).get("focus_bus_id")
     route_color = AI_ROUTE_COLOR if policy_name == "ppo" else STATIC_ROUTE_COLOR if policy_name == "static" else [217, 119, 6, 220]
     stops = _route_stops(frame)
 
@@ -372,7 +291,7 @@ def map_payload(frame: Dict[str, Any], policy_name: str) -> Dict[str, Any]:
         bus_points.append(
             {
                 "coordinates": [float(bus["lon"]), float(bus["lat"])],
-                "label": bus["bus_id"].upper(),
+                "label": f"{bus['bus_id'].upper()}*" if bus["bus_id"] == focus_bus_id else bus["bus_id"].upper(),
                 "subtitle": f"Now near {bus['current_stop_name'].replace('_', ' ')} -> {bus['next_stop_name'].replace('_', ' ')}",
                 "tooltip": (
                     f"{bus['bus_id'].upper()}<br/>"
@@ -381,7 +300,7 @@ def map_payload(frame: Dict[str, Any], policy_name: str) -> Dict[str, Any]:
                     f"Headway: {headway:.0f}s<br/>Occupancy: {occupancy * 100:.0f}%"
                 ),
                 "icon_data": _bus_icon_data(fill_hex),
-                "icon_size": 1.0,
+                "icon_size": 1.18 if bus["bus_id"] == focus_bus_id else 1.0,
                 "label_color": [16, 34, 26, 255],
                 "is_focus": bus["bus_id"] == focus_bus_id,
             }
@@ -401,39 +320,6 @@ def map_payload(frame: Dict[str, Any], policy_name: str) -> Dict[str, Any]:
             "pitch": 35,
         },
     }
-
-
-def frame_story(frame: Dict[str, Any], policy_name: str) -> Dict[str, str]:
-    bunching_bus = primary_bunching_bus(frame)
-    stop_name = bunching_bus["next_stop_name"].replace("_", " ")
-    focus_stop = frame.get("control_state", {}).get("focus_stop_name", stop_name).replace("_", " ")
-    bunching = int(frame["bunching"])
-    action = frame["action"]
-
-    if policy_name == "static":
-        headline = f"Buses are compressing near {stop_name}" if bunching else f"Static service is drifting near {stop_name}"
-        detail = "The delayed bus attracts more passengers, while the following bus catches up because it sees lighter demand."
-    else:
-        headline = f"AI is stabilizing spacing near {focus_stop}" if bunching == 0 else f"AI is intervening before bunching worsens near {focus_stop}"
-        detail = explain_action(frame)
-
-    return {"headline": headline, "detail": detail}
-
-
-def comparison_story(static_frame: Dict[str, Any], ai_frame: Dict[str, Any]) -> List[str]:
-    static_bus = primary_bunching_bus(static_frame)
-    ai_bus = primary_bunching_bus(ai_frame)
-    notes = [
-        f"Static mode compresses buses near {static_bus['next_stop_name'].replace('_', ' ')}.",
-        f"AI keeps the fleet more evenly spaced approaching {ai_bus['next_stop_name'].replace('_', ' ')}.",
-    ]
-    if ai_frame["action"]["hold_sec"] > 0:
-        notes.append(f"The controller briefly holds {ai_frame['control_state']['focus_bus_id'].upper()} to rebuild headway.")
-    if ai_frame["action"]["dispatch_offset_sec"] > 0:
-        notes.append("Terminal dispatch is nudged to prevent the next bunching wave.")
-    return notes
-
-
 def action_chips(frame: Dict[str, Any]) -> List[str]:
     action = frame["action"]
     chips = []
@@ -475,8 +361,8 @@ def _crowd_level(occupancy_ratio: float, demand_estimate: float) -> str:
     return "Light"
 
 
-def focus_bus(frame: Dict[str, Any]) -> Dict[str, Any]:
-    focus_bus_id = frame.get("control_state", {}).get("focus_bus_id")
+def focus_bus(frame: Dict[str, Any], selected_bus_id: str | None = None) -> Dict[str, Any]:
+    focus_bus_id = selected_bus_id or frame.get("control_state", {}).get("focus_bus_id")
     buses = frame["system_state"]["buses"]
     if focus_bus_id:
         for bus in buses:
@@ -485,11 +371,11 @@ def focus_bus(frame: Dict[str, Any]) -> Dict[str, Any]:
     return primary_bunching_bus(frame)
 
 
-def driver_assist(frame: Dict[str, Any]) -> Dict[str, str]:
+def driver_assist(frame: Dict[str, Any], selected_bus_id: str | None = None) -> Dict[str, str]:
     ctrl = frame["control_state"]
     pred = frame["prediction_bundle"]
     action = frame["action"]
-    bus = focus_bus(frame)
+    bus = focus_bus(frame, selected_bus_id)
 
     risk = _risk_level(float(pred["bunching_risk_score"]))
     crowd = _crowd_level(float(bus["occupancy"]), float(ctrl["stop_demand_estimate"]))
@@ -549,9 +435,59 @@ def driver_assist(frame: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def reevaluate_after_driver_response(frame: Dict[str, Any], response: str) -> Dict[str, str | List[str]]:
-    assist = driver_assist(frame)
-    ctrl = frame["control_state"]
+def _other_bus_updates(frame: Dict[str, Any], selected_bus_id: str, response: str) -> List[Dict[str, str]]:
+    updates: List[Dict[str, str]] = []
+    for bus in frame["system_state"]["buses"]:
+        if bus["bus_id"] == selected_bus_id:
+            continue
+
+        instruction = "No change"
+        reason = "Continue current plan."
+        next_stop = bus["next_stop_name"].replace("_", " ")
+        headway_forward = float(bus["headway_forward_sec"])
+        headway_backward = float(bus["headway_backward_sec"])
+
+        if response == "traffic_blocked":
+            if float(bus["headway_forward_sec"]) < 220:
+                speed_cut = max(8, min(18, int(round((220 - headway_forward) / 12.0))))
+                instruction = f"Reduce speed by {speed_cut}% before {next_stop}"
+                reason = "The bus ahead reported traffic blockage, so spacing must be widened before the blocked segment."
+            else:
+                dispatch_delay = max(30, min(90, int(round((headway_forward - 220) / 3.0))))
+                instruction = f"Delay terminal release by {_seconds_text(dispatch_delay)}"
+                reason = "Control room is holding this bus back so fewer vehicles enter the blocked segment together."
+        elif response == "stop_overcrowded":
+            if float(bus["headway_backward_sec"]) < 220:
+                speed_up = max(6, min(15, int(round((220 - headway_backward) / 14.0))))
+                instruction = f"Increase speed by {speed_up}% to support boarding at {next_stop}"
+                reason = "The selected bus is clearing an overcrowded stop and this bus should help absorb spillover demand."
+            else:
+                dispatch_advance = max(20, min(60, int(round((headway_forward - 240) / 5.0))))
+                instruction = f"Advance departure by {_seconds_text(dispatch_advance)} if ready"
+                reason = "Passenger spillover may reach the next stop, so extra capacity should arrive earlier."
+        elif response == "cannot_comply":
+            correction = max(20, min(50, int(round(abs(headway_forward - headway_backward) / 6.0))))
+            instruction = f"Adjust spacing target by {_seconds_text(correction)}"
+            reason = "Selected driver could not apply the planned intervention, so corridor timing is being corrected around this bus."
+        elif response == "acknowledged":
+            monitor_window = max(30, min(90, int(round(headway_forward / 5.0))))
+            instruction = f"Maintain current plan and review again in {_seconds_text(monitor_window)}"
+            reason = "Selected bus is following the active plan and this bus should keep its current corridor spacing."
+
+        updates.append(
+            {
+                "bus_id": bus["bus_id"].upper(),
+                "current_stop": bus["current_stop_name"].replace("_", " "),
+                "next_stop": bus["next_stop_name"].replace("_", " "),
+                "instruction": instruction,
+                "reason": reason,
+            }
+        )
+    return updates
+
+
+def reevaluate_after_driver_response(frame: Dict[str, Any], response: str, selected_bus_id: str | None = None) -> Dict[str, str | List[str] | bool]:
+    assist = driver_assist(frame, selected_bus_id)
     pred = frame["prediction_bundle"]
     response = response.lower().strip()
 
@@ -564,6 +500,7 @@ def reevaluate_after_driver_response(frame: Dict[str, Any], response: str) -> Di
     route_status = "Stay on the same corridor. No route diversion is required."
     revised_risk = assist["risk_level"]
     response_label = response.replace("_", " ").title()
+    corridor_wide = response in {"traffic_blocked", "stop_overcrowded"}
 
     if response == "acknowledged":
         revised_instruction = assist["instruction"]
@@ -639,6 +576,8 @@ def reevaluate_after_driver_response(frame: Dict[str, Any], response: str) -> Di
         f"Control room update: {timing_adjustment}"
     )
 
+    other_updates = _other_bus_updates(frame, assist["focus_bus_id"], response)
+
     return {
         "response_label": response_label,
         "revised_risk": revised_risk,
@@ -651,4 +590,6 @@ def reevaluate_after_driver_response(frame: Dict[str, Any], response: str) -> Di
         "expected_outcome": expected_outcome,
         "voice_prompt": voice_prompt,
         "action_chips": action_chips,
+        "corridor_wide": corridor_wide,
+        "other_bus_updates": other_updates,
     }

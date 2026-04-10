@@ -3,12 +3,12 @@
 ## What This Project Is
 This repository contains a `BMTC-inspired hackathon MVP` for visualizing and controlling bus bunching on the `KBS - MG Road - Domlur` corridor.
 
-The demo is designed for judges:
+The demo is designed as a lean product simulation:
 - real geographic corridor map
 - stop markers and route path
 - moving bus replay on the corridor
 - side-by-side `static schedule vs AI control`
-- a visual control-room story instead of a numbers-heavy dashboard
+- one separate `Driver Assist` tablet view
 
 ## What Is Implemented
 - custom corridor simulator in `src/sim/`
@@ -18,14 +18,9 @@ The demo is designed for judges:
 - evaluation and artifact generation in `src/eval/compare.py`
 - Streamlit visual demo in `app/`
 
-## Demo Pages
-- `Home`: map-first overview of the corridor and demo flow
-- `Why Bunching Happens`: visual replay of bunching under static control
-- `Baseline vs AI`: side-by-side geographic replay
-- `Control Room`: focus bus, intervention, and route situation
-- `AI Brain`: what the predictor sees and how the controller acts
-- `Driver Assist`: plain-language guidance for the driver
-- `Outcome Summary`: final judge wrap-up
+## App Pages
+- `Simulation`: the full split-screen corridor replay with shared controls
+- `Driver Assist`: the in-bus tablet view with driver responses and AI re-evaluation
 
 ## How To Run
 ```bash
@@ -48,7 +43,7 @@ Running `python3 -m src.eval.compare` writes:
 - `artifacts/comparison_full.json`
 - `artifacts/ppo_checkpoint.json`
 
-These are used for deterministic replay in the Streamlit demo.
+These are used for deterministic replay in the Streamlit app.
 
 ## Current Hackathon Simplifications
 - one corridor instead of the full BMTC network
@@ -56,12 +51,11 @@ These are used for deterministic replay in the Streamlit demo.
 - lightweight PPO-style trainer fallback instead of a heavy dependency stack
 - synthetic but BMTC-shaped passenger and traffic behavior
 
-## Why The Demo Looks Better Now
-- buses have geographic positions on the map
-- each stop includes lat/lon and names
-- the route is drawn as a corridor path
-- focus bus and intervention are visually highlighted
-- story cards explain what judges should notice at each replay step
+## Current UX
+- the `Simulation` page is the only judge-facing replay page
+- baseline and AI views stay synchronized with one slider
+- autoplay replays the same scenario on both maps
+- `Driver Assist` stays separate as the operational tablet for the driver
 
 ## Optional Future Upgrades
 - replace the predictor with a real STGNN
