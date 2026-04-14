@@ -77,6 +77,9 @@ traffic_spike = st.sidebar.toggle("Traffic spike", value=False)
 passenger_surge = st.sidebar.toggle("Passenger surge", value=False)
 
 cmp = compare_reports(int(seed), profile)
+if cmp["ppo"].get("warning"):
+    st.warning(cmp["ppo"]["warning"])
+
 static_trace = apply_modifiers(cmp["static"]["trace"], traffic_spike, passenger_surge)
 ai_trace = apply_modifiers(cmp["ppo"]["trace"], traffic_spike, passenger_surge)
 

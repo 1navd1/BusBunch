@@ -186,6 +186,8 @@ def save_dataset(
 
 
 def save_norm_json(out_path: str, norm: Dict[str, np.ndarray], graph: GraphArtifacts, history: int) -> None:
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "x_mean": norm["mean"].reshape(-1).tolist(),
         "x_std": norm["std"].reshape(-1).tolist(),
@@ -201,7 +203,7 @@ def save_norm_json(out_path: str, norm: Dict[str, np.ndarray], graph: GraphArtif
             "time_cos",
         ],
     }
-    Path(out_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def load_dataset(npz_path: str) -> Dict[str, np.ndarray]:

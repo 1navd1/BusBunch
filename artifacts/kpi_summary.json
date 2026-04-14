@@ -1,8 +1,7 @@
 {
   "training": {
-    "episodes_seen": 30,
-    "last_episode_reward": -215.023,
-    "best_episode_reward": -211.2067
+    "checkpoint": "artifacts/models/ppo_best.zip",
+    "stgnn": "artifacts/models/stgnn_best.pt"
   },
   "results": {
     "static": {
@@ -15,29 +14,29 @@
       "total_delay": 828.8331
     },
     "headway": {
-      "mean_reward": -631.3179,
-      "bunching_count": 5.2,
-      "headway_std": 117.9288,
-      "avg_wait_time": 206.8598,
-      "occupancy_std": 0.3327,
-      "fuel_proxy": 222.9065,
-      "total_delay": 1492.5869
+      "mean_reward": -1130.9806,
+      "bunching_count": 147.2,
+      "headway_std": 140.2453,
+      "avg_wait_time": 214.6706,
+      "occupancy_std": 0.3379,
+      "fuel_proxy": 223.3405,
+      "total_delay": 1505.8166
     },
     "ppo": {
-      "mean_reward": -219.6322,
+      "mean_reward": -222.9087,
       "bunching_count": 0,
-      "headway_std": 8.9802,
-      "avg_wait_time": 168.7278,
-      "occupancy_std": 0.126,
-      "fuel_proxy": 281.7346,
-      "total_delay": 4999.3411
+      "headway_std": 8.5021,
+      "avg_wait_time": 168.5604,
+      "occupancy_std": 0.1392,
+      "fuel_proxy": 280.0699,
+      "total_delay": 3367.2974
     }
   },
   "improvement_vs_static": {
     "bunching_count_pct": 100.0,
-    "avg_wait_time_pct": 28.46,
-    "occupancy_std_pct": 64.56,
-    "headway_std_pct": 95.53
+    "avg_wait_time_pct": 28.54,
+    "occupancy_std_pct": 60.84,
+    "headway_std_pct": 95.77
   },
   "headline_kpi_win": {
     "bunching_reduction": true,

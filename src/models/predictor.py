@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Dict, Iterable, List
+from typing import TYPE_CHECKING, Dict, Iterable, List
 
 from .contracts import PredictionBundle, SystemState
-from .stgnn_infer import STGNNPredictor
+
+if TYPE_CHECKING:
+    from .stgnn_infer import STGNNPredictor
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -20,6 +22,8 @@ class Predictor:
 
 def load_default_predictor() -> Predictor:
     """Default predictor backend: trained STGNN checkpoint."""
+    from .stgnn_infer import STGNNPredictor
+
     return STGNNPredictor()
 
 

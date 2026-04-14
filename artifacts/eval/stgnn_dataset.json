@@ -1,0 +1,28 @@
+{
+  "history": 8,
+  "horizon": 3,
+  "n_samples": 4080,
+  "n_nodes": 10,
+  "n_features": 7,
+  "split": {
+    "train": 2856,
+    "val": 612,
+    "test": 612
+  },
+  "seeds": [
+    3,
+    7,
+    11,
+    17,
+    23,
+    29,
+    31,
+    37
+  ],
+  "policies": [
+    "static",
+    "headway",
+    "noisy"
+  ],
+  "peak_profile": "peak"
+}

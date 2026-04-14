@@ -23,6 +23,7 @@ from lib.ui import (
     render_corridor_map,
     status_card,
     tablet_shell,
+    voice_prompt_player,
 )
 
 
@@ -34,6 +35,9 @@ def _render_driver_view(frame: dict, selected_bus_id: str, replan: dict | None, 
     assist = driver_assist(frame, selected_bus_id)
     risk_tone = _risk_tone(replan["revised_risk"] if replan else assist["risk_level"])
     crowd_tone = {"Light": "green", "Moderate": "yellow", "Heavy": "red"}[assist["crowd_level"]]
+    spoken_text = replan["voice_prompt"] if replan else assist["spoken_message"]
+    voice_state_key = f"driver_voice_autoplay::{selected_bus_id}::{step}"
+    autoplay_voice = bool(st.session_state.pop(voice_state_key, False))
 
     map_col, tablet_col = st.columns([1.25, 1.05])
     with map_col:
@@ -110,7 +114,8 @@ def _render_driver_view(frame: dict, selected_bus_id: str, replan: dict | None, 
 
     divider()
     st.subheader("Voice Prompt")
-    driver_panel("What the driver hears", replan["voice_prompt"] if replan else assist["spoken_message"])
+    driver_panel("What the driver hears", spoken_text)
+    voice_prompt_player(spoken_text, key=f"{selected_bus_id}-{step}", autoplay=autoplay_voice)
 
 
 apply_theme()
@@ -123,6 +128,9 @@ traffic_spike = st.sidebar.toggle("Traffic spike", value=False)
 passenger_surge = st.sidebar.toggle("Passenger surge", value=False)
 
 report = run_policy_report("ppo", int(seed), profile)
+if report.get("warning"):
+    st.warning(report["warning"])
+
 trace = apply_modifiers(report["trace"], traffic_spike, passenger_surge)
 step = st.slider("Replay step", min_value=0, max_value=len(trace) - 1, value=min(80, len(trace) - 1))
 frame = step_view(trace, step)
@@ -165,8 +173,8 @@ if control_cols[4].button("Stop Overcrowded", key=f"driver_crowd_{selected_bus_i
     st.session_state[response_state_key] = "stop_overcrowded"
     st.rerun()
 if control_cols[5].button("Play Audio", key=f"driver_audio_{selected_bus_id}_{step}", use_container_width=True):
-    current_assist = driver_assist(frame, selected_bus_id)
-    st.info(replan["voice_prompt"] if replan else current_assist["spoken_message"])
+    st.session_state[f"driver_voice_autoplay::{selected_bus_id}::{step}"] = True
+    st.rerun()
 if control_cols[6].button("Clear", key=f"driver_clear_{selected_bus_id}_{step}", use_container_width=True):
     st.session_state[response_state_key] = None
     st.rerun()

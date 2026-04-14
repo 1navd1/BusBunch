@@ -14,13 +14,42 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.eval.runner import ScenarioGenerator, ScenarioRunner
 from src.policies.headway_policy import HeadwayPolicy
-from src.policies.rl_policy import RLPolicy
 from src.policies.static_policy import StaticPolicy
 
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 CHECKPOINT_PATH = ARTIFACTS_DIR / "models" / "ppo_best.zip"
 STATIC_ROUTE_COLOR = [185, 28, 28, 220]
 AI_ROUTE_COLOR = [15, 118, 110, 230]
+
+
+def policy_backend_status() -> Dict[str, str | bool]:
+    status: Dict[str, str | bool] = {
+        "stgnn_available": False,
+        "ppo_available": False,
+        "stgnn_reason": "",
+        "ppo_reason": "",
+    }
+
+    try:
+        from src.models.stgnn_infer import STGNNPredictor
+
+        STGNNPredictor(
+            checkpoint_path=str(ARTIFACTS_DIR / "models" / "stgnn_best.pt"),
+            norm_path=str(ARTIFACTS_DIR / "models" / "stgnn_norm.json"),
+        )
+        status["stgnn_available"] = True
+    except Exception as exc:
+        status["stgnn_reason"] = str(exc)
+
+    try:
+        from src.policies.rl_policy import RLPolicy
+
+        RLPolicy(str(CHECKPOINT_PATH), obs_dim=8)
+        status["ppo_available"] = True
+    except Exception as exc:
+        status["ppo_reason"] = str(exc)
+
+    return status
 
 
 def _bus_icon_data(fill_hex: str) -> Dict[str, Any]:
@@ -46,19 +75,31 @@ def _bus_icon_data(fill_hex: str) -> Dict[str, Any]:
 @st.cache_data
 def run_policy_report(policy_name: str, seed: int, peak_profile: str) -> Dict[str, Any]:
     scenario = ScenarioGenerator.create(day_type="weekday", peak_profile=peak_profile)
+    requested_policy = policy_name
+    actual_policy = policy_name
+    warning: str | None = None
 
     if policy_name == "static":
         policy = StaticPolicy()
     elif policy_name == "headway":
         policy = HeadwayPolicy()
     elif policy_name == "ppo":
-        policy = RLPolicy(str(CHECKPOINT_PATH), obs_dim=8)
+        try:
+            from src.policies.rl_policy import RLPolicy
+
+            policy = RLPolicy(str(CHECKPOINT_PATH), obs_dim=8)
+        except Exception as exc:
+            policy = HeadwayPolicy()
+            actual_policy = policy.name
+            warning = f"PPO replay unavailable: {exc}. Showing headway control instead."
     else:
         raise ValueError(f"Unknown policy: {policy_name}")
 
     report = ScenarioRunner.run(policy, scenario, seed=seed)
     return {
-        "policy": policy_name,
+        "policy": actual_policy,
+        "requested_policy": requested_policy,
+        "warning": warning,
         "seed": seed,
         "scenario": {"day_type": scenario.day_type, "peak_profile": scenario.peak_profile},
         "metrics": asdict(report.metrics),
@@ -121,6 +162,7 @@ def compare_reports(seed: int, peak_profile: str) -> Dict[str, Any]:
         return round(100.0 * (base - new) / base, 2)
 
     return {
+        "backend_status": policy_backend_status(),
         "static": static_r,
         "headway": headway_r,
         "ppo": ppo_r,

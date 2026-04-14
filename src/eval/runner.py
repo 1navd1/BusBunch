@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.models.contracts import ControlAction, ControlState, EpisodeMetrics, EpisodeReport
-from src.models.stgnn_infer import STGNNPredictor
+from src.models.predictor import GraphAwarePredictor, Predictor
 from src.sim.entities import EpisodeScenario
 from src.sim.simulator import Simulator
 
@@ -47,23 +47,34 @@ class ScenarioGenerator:
 
 
 class ControlEnv:
-    """Replay/eval wrapper over simulator using checkpoint-backed STGNN."""
+    """Replay/eval wrapper over simulator with a best-effort predictor backend."""
 
     def __init__(
         self,
         scenario: ScenarioConfig | None = None,
         stgnn_checkpoint: str = "artifacts/models/stgnn_best.pt",
         stgnn_norm: str = "artifacts/models/stgnn_norm.json",
+        predictor: Predictor | None = None,
     ):
         self.scenario = scenario or ScenarioGenerator.create("weekday", "peak")
         self.sim = Simulator()
+        self.predictor = predictor or self._build_predictor(
+            stgnn_checkpoint=stgnn_checkpoint,
+            stgnn_norm=stgnn_norm,
+        )
 
-        if not Path(stgnn_checkpoint).exists() or not Path(stgnn_norm).exists():
-            raise FileNotFoundError(
-                "Missing STGNN artifacts. Expected artifacts/models/stgnn_best.pt and "
-                "artifacts/models/stgnn_norm.json. Run `python3 -m src.train.train_stgnn` first."
-            )
-        self.predictor = STGNNPredictor(checkpoint_path=stgnn_checkpoint, norm_path=stgnn_norm)
+    def _build_predictor(self, stgnn_checkpoint: str, stgnn_norm: str) -> Predictor:
+        checkpoint = Path(stgnn_checkpoint)
+        norm = Path(stgnn_norm)
+        if checkpoint.exists() and norm.exists():
+            try:
+                from src.models.stgnn_infer import STGNNPredictor
+
+                return STGNNPredictor(checkpoint_path=stgnn_checkpoint, norm_path=stgnn_norm)
+            except Exception:
+                pass
+
+        return GraphAwarePredictor(num_buses=int(self.sim.corridor_cfg["n_buses"]))
 
     @property
     def obs_dim(self) -> int:

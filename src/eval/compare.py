@@ -8,7 +8,6 @@ from typing import Dict, List
 
 from src.eval.runner import ScenarioConfig, ScenarioGenerator, ScenarioRunner
 from src.policies.headway_policy import HeadwayPolicy
-from src.policies.rl_policy import RLPolicy
 from src.policies.static_policy import StaticPolicy
 
 
@@ -70,6 +69,11 @@ def run_comparison(out_dir: str = "artifacts") -> Dict:
     seeds = [3, 7, 11, 17, 23]
     static_res = evaluate_policy(StaticPolicy(), seeds, scenario)
     headway_res = evaluate_policy(HeadwayPolicy(), seeds, scenario)
+    try:
+        from src.policies.rl_policy import RLPolicy
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("stable-baselines3 is required for PPO evaluation. Install requirements and retry.") from exc
+
     ppo_res = evaluate_policy(RLPolicy(str(ckpt_path), obs_dim=8), seeds, scenario)
 
     def pct_improve(metric: str) -> float:

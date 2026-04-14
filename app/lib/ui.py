@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 
 import pydeck as pdk
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def apply_theme() -> None:
@@ -416,6 +418,48 @@ def driver_panel(title: str, body: str, tone: str = "light") -> None:
 </div>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def voice_prompt_player(text: str, key: str, autoplay: bool = False) -> None:
+    payload = json.dumps({"text": text, "autoplay": autoplay, "key": key})
+    components.html(
+        f"""
+<div style="border:1px solid rgba(19,32,51,0.14);border-radius:18px;padding:0.8rem 0.9rem;background:rgba(255,255,255,0.74);">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;">
+    <strong style="color:#132033;">Driver Voice</strong>
+    <button id="speak-btn" style="border:none;border-radius:999px;padding:0.45rem 0.9rem;background:#0f6d7a;color:white;font-weight:700;cursor:pointer;">
+      Speak Instruction
+    </button>
+  </div>
+  <p style="margin:0.65rem 0 0;color:#556173;font-size:0.95rem;">Uses the browser voice engine for a live spoken command.</p>
+</div>
+<script>
+  const payload = {payload};
+  const button = document.getElementById("speak-btn");
+
+  function speakInstruction() {{
+    const synth = window.speechSynthesis;
+    if (!synth) {{
+      return;
+    }}
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(payload.text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    synth.speak(utterance);
+  }}
+
+  button.addEventListener("click", speakInstruction);
+
+  if (payload.autoplay) {{
+    window.setTimeout(speakInstruction, 150);
+  }}
+</script>
+        """,
+        height=120,
+        key=f"voice-player-{key}",
     )
 
 

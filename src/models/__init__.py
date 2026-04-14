@@ -10,7 +10,11 @@ from .contracts import (
     SystemState,
 )
 from .predictor import GraphAwarePredictor, Predictor, load_default_predictor
-from .stgnn_infer import STGNNPredictor
+
+try:
+    from .stgnn_infer import STGNNPredictor
+except Exception:  # pragma: no cover
+    STGNNPredictor = None
 
 __all__ = [
     "BusState",
@@ -24,6 +28,8 @@ __all__ = [
     "EpisodeReport",
     "Predictor",
     "GraphAwarePredictor",
-    "STGNNPredictor",
     "load_default_predictor",
 ]
+
+if STGNNPredictor is not None:
+    __all__.append("STGNNPredictor")
